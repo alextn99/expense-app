@@ -2,57 +2,37 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from streamlit_gsheets import GSheetsConnection
+import json
 
 # --- CONFIGURATION ---
-DEFAULT_CATEGORIES = [
-    'Transport', 'Dining', 'Groceries', 'Entertainment', 'Shopping', 
-    'Travel', 'Bills & Utilities', 'Transfer/Payment', 'Uncategorized', 
-    'Medical', 'Pets', 'Investments', 'Beauty & Spa', 'Education'
-]
-DEFAULT_SUBCATS = [
-    'Coffee', 'Restaurant', 'Flights', 'Hotel', 'Taxi', 'Uber', 'Gas', 
-    'Supermarket', 'Online Shopping', 'Subscription', 'General'
-]
-DEFAULT_PEOPLE = ['Family', 'Partner', 'Business']
-
 st.set_page_config(page_title="Cloud Expense Tracker", layout="wide", page_icon="💳")
 
 # --- 1. SETUP & AUTHENTICATION ---
 def check_password():
     """Returns `True` if the user had the correct password."""
-
     def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        # .strip() removes accidental spaces at the end
         user = st.session_state["username"].strip()
         password = st.session_state["password"].strip()
-        
-        # Check against the [users] section in Streamlit Secrets
         if "users" in st.secrets and user in st.secrets["users"] and st.secrets["users"][user] == password:
             st.session_state["password_correct"] = True
-            st.session_state["current_user"] = user  # Remember who logged in
-            del st.session_state["password"]  # Don't store password
+            st.session_state["current_user"] = user 
+            del st.session_state["password"]
             del st.session_state["username"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        # First run, show inputs
         st.title("🔒 Login")
         st.text_input("Username", key="username")
         st.text_input("Password", type="password", key="password", on_change=password_entered)
         return False
-    
     elif not st.session_state["password_correct"]:
-        # Password incorrect, show input again
         st.title("🔒 Login")
         st.text_input("Username", key="username")
         st.text_input("Password", type="password", key="password", on_change=password_entered)
-        st.error("😕 User not found or password incorrect. (Check case sensitivity!)")
+        st.error("😕 User not found or password incorrect.")
         return False
-    
     else:
-        # Password correct, allow entry
         return True
 
 if not check_password():
@@ -60,120 +40,80 @@ if not check_password():
 
 # --- 2. CONNECT TO GOOGLE SHEET ---
 st.sidebar.header("🔌 Connection")
-
-# Allow user to paste their own sheet link (Decentralized Mode)
 if "sheet_url" not in st.session_state:
     st.session_state["sheet_url"] = ""
 
 sheet_url = st.sidebar.text_input("Paste your Google Sheet Link:", value=st.session_state["sheet_url"])
 
 if not sheet_url:
-    st.warning("👈 Please paste your Google Sheet URL in the sidebar to begin.")
-    st.markdown("""
-    ### How to set up your Sheet:
-    1. Create a new Google Sheet.
-    2. Click **Share** (Top Right).
-    3. Invite this email as an **Editor**:  
-       (Check your Streamlit Secrets for the client_email)
-    4. Copy the link and paste it here.
-    """)
+    st.warning("👈 Paste Google Sheet URL to begin.")
     st.stop()
 else:
     st.session_state["sheet_url"] = sheet_url
 
-# Establish Connection
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- 3. DATA LOADING FUNCTIONS ---
 def load_data(tab_name, default_df=None):
     try:
-        # We use simple cache ttl to prevent constant reloading
         df = conn.read(spreadsheet=sheet_url, worksheet=tab_name, ttl=0)
         return df
-    except Exception:
-        # If tab doesn't exist or is empty, return default
+    except:
         return default_df if default_df is not None else pd.DataFrame()
 
 def save_data(df, tab_name):
     conn.update(spreadsheet=sheet_url, worksheet=tab_name, data=df)
 
-# Initialize Data Frames if Tabs are missing (Auto-Setup)
+# --- INITIALIZE TABS (Create headers if empty) ---
 try:
-    # 1. EXPENSES
     df_history = load_data("expenses")
-    if df_history.empty: 
-        df_history = pd.DataFrame(columns=['Date', 'Description', 'Amount', 'Category', 'SubCategory', 'Source', 'Person', 'Locked'])
-        
-    # 2. CATEGORIES
     df_cats = load_data("categories")
-    if df_cats.empty: df_cats = pd.DataFrame(DEFAULT_CATEGORIES, columns=["Category Name"])
-
-    # 3. SUBCATS
     df_subs = load_data("subcategories")
-    if df_subs.empty: df_subs = pd.DataFrame(DEFAULT_SUBCATS, columns=["Sub-Category Name"])
-
-    # 4. PEOPLE
     df_ppl = load_data("people")
-    if df_ppl.empty: df_ppl = pd.DataFrame(DEFAULT_PEOPLE, columns=["Person Name"])
-
-    # 5. RULES
     df_rules = load_data("rules")
-    if df_rules.empty: df_rules = pd.DataFrame(columns=["Keyword", "Category", "SubCategory", "Person"])
-
 except Exception as e:
-    st.error(f"Error connecting to Sheet. Did you share it with the bot?\n\nDetails: {e}")
+    st.error(f"Connection Error: {e}")
     st.stop()
 
 # --- PRE-PROCESSING ---
-df_history['Date'] = pd.to_datetime(df_history['Date'], errors='coerce')
-df_history['SubCategory'] = df_history['SubCategory'].fillna('')
-if 'Locked' not in df_history.columns: df_history['Locked'] = False
-if 'Create Rule' not in df_history.columns: df_history['Create Rule'] = False
+if not df_history.empty:
+    df_history['Date'] = pd.to_datetime(df_history['Date'], errors='coerce')
+    df_history['SubCategory'] = df_history['SubCategory'].fillna('')
 
 # Lists for Dropdowns
-available_cats = sorted(df_cats["Category Name"].dropna().unique().tolist())
-available_subcats = sorted(df_subs["Sub-Category Name"].dropna().unique().tolist())
-available_people = sorted(df_ppl["Person Name"].dropna().unique().tolist())
+available_cats = sorted(df_cats["Category Name"].dropna().unique().tolist()) if not df_cats.empty else []
+available_subcats = sorted(df_subs["Sub-Category Name"].dropna().unique().tolist()) if not df_subs.empty else []
+available_people = sorted(df_ppl["Person Name"].dropna().unique().tolist()) if not df_ppl.empty else []
 
 # --- 4. DASHBOARD LOGIC ---
 current_user = st.session_state["current_user"]
 st.title(f"💳 {current_user.title()}'s Cloud Expense Tracker")
 
-# ... [FILTERS SECTION] ...
 if not df_history.empty:
     df_history = df_history.dropna(subset=['Date'])
     min_date = df_history['Date'].min().date()
     max_date = df_history['Date'].max().date()
     start_date, end_date = st.sidebar.date_input("Period", [min_date, max_date])
     
-    # Simple Filters
-    st.sidebar.markdown("---")
     selected_cats = st.sidebar.multiselect("Filter Category", available_cats, default=available_cats)
     
-    # Filter Logic
     mask = (df_history['Date'].dt.date >= start_date) & \
            (df_history['Date'].dt.date <= end_date) & \
            (df_history['Category'].isin(selected_cats))
     
     filtered_df = df_history.loc[mask].copy()
     
-    # Metrics
     if not filtered_df.empty:
         spend = filtered_df[filtered_df['Amount'] < 0]['Amount'].sum() * -1
         st.metric("Total Spend", f"${spend:,.2f}")
-        
-        # Pie Chart
-        st.subheader("Spending by Category")
         cat_group = filtered_df.groupby('Category')['Amount'].sum().abs().reset_index()
         fig = px.pie(cat_group, values='Amount', names='Category', hole=0.4)
         st.plotly_chart(fig)
 
-# ... [EDITOR SECTION] ...
 st.divider()
 st.subheader("📝 Transaction Editor")
 
 if not filtered_df.empty:
-    # Prepare display
     display_df = filtered_df.copy()
     display_df['Date'] = display_df['Date'].dt.date
     
@@ -186,82 +126,82 @@ if not filtered_df.empty:
             "Locked": st.column_config.CheckboxColumn("🔒"),
             "Create Rule": st.column_config.CheckboxColumn("➕ Rule")
         },
-        hide_index=True,
-        num_rows="dynamic",
-        use_container_width=True
+        hide_index=True, num_rows="dynamic", use_container_width=True
     )
 
-    if st.button("💾 Save Changes to Google Sheet"):
-        # 1. Update Rules
+    if st.button("💾 Save Changes"):
+        # Rule Logic
         new_rules = []
         for i, row in edited_df.iterrows():
             if row['Create Rule']:
                 new_rules.append({
                     "Keyword": str(row['Description']).lower().strip(),
-                    "Category": row['Category'],
-                    "SubCategory": row['SubCategory'],
-                    "Person": row['Person']
+                    "Category": row['Category'], "SubCategory": row['SubCategory'], "Person": row['Person']
                 })
-        
         if new_rules:
             new_rules_df = pd.DataFrame(new_rules)
             updated_rules_df = pd.concat([df_rules, new_rules_df], ignore_index=True).drop_duplicates(subset=['Keyword'])
             save_data(updated_rules_df, "rules")
-            st.toast(f"Saved {len(new_rules)} new rules!")
 
-        # 2. Update Main Data - INDEX MATCHING
-        # We use the index to map edits back to the master dataframe
-        # This handles row deletions if rows are missing from edited_df
-        
-        # Identify deleted rows (indices in filtered_df but NOT in edited_df)
+        # Data Logic
         deleted_indices = list(set(filtered_df.index) - set(edited_df.index))
-        
-        if deleted_indices:
-            df_history = df_history.drop(deleted_indices)
-            
-        # Identify updated/new rows
+        if deleted_indices: df_history = df_history.drop(deleted_indices)
         df_history.loc[edited_df.index] = edited_df
-        
-        # Convert Date back to string/datetime for GSheets compatibility
         df_history['Date'] = df_history['Date'].astype(str)
-        
         save_data(df_history, "expenses")
-        st.success("✅ Saved to Google Drive!")
+        st.success("✅ Saved!")
         st.rerun()
 
-else:
-    st.info("No data found for this period.")
+# --- 5. MIGRATION STATION (Restore Old Data) ---
+st.sidebar.markdown("---")
+with st.sidebar.expander("📂 MIGRATION STATION (Import Old Data)"):
+    st.warning("Only use this to restore your old files to the Cloud!")
 
-# --- 5. UPLOAD SECTION ---
-with st.sidebar.expander("Upload New Data"):
-    up_file = st.file_uploader("Upload CSV", type=['csv'])
-    if up_file and st.button("Process Upload"):
-        try:
-            new_data = pd.read_csv(up_file)
-            
-            # Basic cleanup of uploaded file
-            new_data.columns = [c.strip() for c in new_data.columns]
-            
-            # Ensure required columns exist
-            required_cols = ['Date', 'Description', 'Amount']
-            if not all(col in new_data.columns for col in required_cols):
-                st.error(f"CSV must contain columns: {required_cols}")
-                st.stop()
+    # 1. Categories
+    up_cats = st.file_uploader("Upload categories.json", type=['json'])
+    if up_cats and st.button("Restore Categories"):
+        data = json.load(up_cats)
+        df = pd.DataFrame(data, columns=["Category Name"])
+        save_data(df, "categories")
+        st.toast("Categories Restored!")
 
-            # Set Defaults
-            if 'Category' not in new_data.columns: new_data['Category'] = 'Uncategorized'
-            if 'SubCategory' not in new_data.columns: new_data['SubCategory'] = ''
-            if 'Person' not in new_data.columns: new_data['Person'] = 'Family'
-            if 'Source' not in new_data.columns: new_data['Source'] = 'Uploaded'
-            new_data['Locked'] = False
-            new_data['Create Rule'] = False
-            
-            # Append to history
-            combined = pd.concat([df_history, new_data], ignore_index=True)
-            
-            # Save
-            save_data(combined, "expenses")
-            st.success("Uploaded successfully!")
-            st.rerun()
-        except Exception as e:
-            st.error(f"Error processing file: {e}")
+    # 2. Sub-Categories
+    up_subs = st.file_uploader("Upload subcategories.json", type=['json'])
+    if up_subs and st.button("Restore Sub-Cats"):
+        data = json.load(up_subs)
+        df = pd.DataFrame(data, columns=["Sub-Category Name"])
+        save_data(df, "subcategories")
+        st.toast("Sub-Cats Restored!")
+
+    # 3. People
+    up_ppl = st.file_uploader("Upload people.json", type=['json'])
+    if up_ppl and st.button("Restore People"):
+        data = json.load(up_ppl)
+        df = pd.DataFrame(data, columns=["Person Name"])
+        save_data(df, "people")
+        st.toast("People Restored!")
+
+    # 4. Rules
+    up_rules = st.file_uploader("Upload rules.json", type=['json'])
+    if up_rules and st.button("Restore Rules"):
+        data = json.load(up_rules)
+        # Flatten dictionary to table
+        rows = []
+        for kw, details in data.items():
+            if isinstance(details, dict):
+                rows.append({"Keyword": kw, "Category": details.get("category"), "SubCategory": details.get("subcategory"), "Person": details.get("person")})
+            else:
+                rows.append({"Keyword": kw, "Category": details, "SubCategory": "", "Person": "Family"})
+        
+        df = pd.DataFrame(rows)
+        save_data(df, "rules")
+        st.toast("Rules Restored!")
+
+    # 5. History
+    up_csv = st.file_uploader("Upload my_expenses.csv", type=['csv'])
+    if up_csv and st.button("Restore History"):
+        df = pd.read_csv(up_csv)
+        # Clean up
+        if 'Create Rule' in df.columns: df = df.drop(columns=['Create Rule'])
+        save_data(df, "expenses")
+        st.success("History Restored!")
