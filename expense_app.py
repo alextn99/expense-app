@@ -58,19 +58,27 @@ def check_password():
 if not check_password():
     st.stop()
 
-# --- 2. CONNECT TO GOOGLE SHEET ---
-st.sidebar.header("📌 Connection")
+# --- 2. CONNECT TO GOOGLE SHEET (Auto-load from secrets) ---
+current_user = st.session_state["current_user"]
 
-if "sheet_url" not in st.session_state:
-    st.session_state["sheet_url"] = ""
-
-sheet_url = st.sidebar.text_input("Paste your Google Sheet Link:", value=st.session_state["sheet_url"])
+# Check if user has a sheet configured in secrets
+if "sheets" in st.secrets and current_user in st.secrets["sheets"]:
+    sheet_url = st.secrets["sheets"][current_user]
+    sheet_connected_via_secrets = True
+else:
+    sheet_connected_via_secrets = False
+    if "sheet_url" not in st.session_state:
+        st.session_state["sheet_url"] = ""
+    sheet_url = st.session_state.get("sheet_url", "")
 
 if not sheet_url:
-    st.warning("👈 Please paste your Google Sheet URL in the sidebar to begin.")
+    st.title(f"💳 {current_user.title()}'s Cloud Expense Tracker")
+    st.warning("⚠️ No Google Sheet configured. Please ask the admin to add your sheet URL to secrets, or enter it below.")
+    sheet_url = st.text_input("Paste your Google Sheet Link:")
+    if sheet_url:
+        st.session_state["sheet_url"] = sheet_url
+        st.rerun()
     st.stop()
-else:
-    st.session_state["sheet_url"] = sheet_url
 
 conn = st.connection("gsheets", type=GSheetsConnection)
 
@@ -117,7 +125,6 @@ def get_match(description, rules_df):
     desc = str(description).lower()
     if rules_df.empty:
         return None, None, None
-    # Sort by keyword length (longest first)
     rules_df = rules_df.copy()
     rules_df['kw_len'] = rules_df['Keyword'].str.len()
     rules_df = rules_df.sort_values('kw_len', ascending=False)
@@ -156,7 +163,6 @@ try:
 
     df_rules = load_data("rules", headers=HEADERS["rules"])
     if df_rules.empty: 
-        # Convert default rules dict to dataframe
         rules_rows = [{"Keyword": k, "Category": v["category"], "SubCategory": v["subcategory"], "Person": v["person"]} for k, v in DEFAULT_RULES.items()]
         df_rules = pd.DataFrame(rules_rows)
 
@@ -183,7 +189,6 @@ def get_column_safe(df, col_name):
         return sorted(df[col_name].dropna().unique().tolist())
     return []
 
-# Store in session state
 if 'categories' not in st.session_state:
     st.session_state['categories'] = get_column_safe(df_cats, "Category Name") or sorted(DEFAULT_CATEGORIES)
 if 'subcategories' not in st.session_state:
@@ -192,18 +197,13 @@ if 'people' not in st.session_state:
     st.session_state['people'] = get_column_safe(df_ppl, "Person Name") or sorted(DEFAULT_PEOPLE)
 
 # --- MAIN TITLE ---
-current_user = st.session_state["current_user"]
 st.title(f"💳 {current_user.title()}'s Cloud Expense Tracker")
 
-# === SIDEBAR: SETTINGS ===
-st.sidebar.markdown("---")
-st.sidebar.header("⚙️ Settings")
-font_choice = st.sidebar.select_slider("Aa Text Size", options=["Small", "Default", "Large"], value="Default")
-font_size = "14px" if font_choice == "Small" else "20px" if font_choice == "Large" else "16px"
-st.markdown(f"<style>html, body, [class*='css'] {{ font-size: {font_size} !important; }}</style>", unsafe_allow_html=True)
+# ============================================
+# SIDEBAR - REORGANIZED (Filters at Top)
+# ============================================
 
-# === SIDEBAR: FILTERS ===
-st.sidebar.markdown("---")
+# === SIDEBAR: FILTERS (TOP) ===
 st.sidebar.header("🔘 Filters")
 
 if not df_history.empty:
@@ -216,7 +216,7 @@ if not df_history.empty:
     
     search_term = st.sidebar.text_input("Search Description", placeholder="e.g. Starbucks, Uber")
 
-    # Smart lists: combine saved + data in sheet
+    # Smart lists
     data_people = df_history['Person'].dropna().unique().tolist()
     available_people = sorted(list(set(st.session_state['people'] + data_people)))
     
@@ -259,7 +259,7 @@ else:
 st.sidebar.markdown("---")
 
 # === SIDEBAR: MANAGERS ===
-with st.sidebar.expander("Manage Categories", expanded=False):
+with st.sidebar.expander("📂 Manage Categories", expanded=False):
     cat_df = pd.DataFrame(st.session_state['categories'], columns=["Category Name"]).sort_values("Category Name")
     edited_cat_df = st.data_editor(cat_df, num_rows="dynamic", hide_index=True, use_container_width=True, key="cat_editor")
     if st.button("💾 Save Categories"):
@@ -269,7 +269,7 @@ with st.sidebar.expander("Manage Categories", expanded=False):
         st.success("Saved!")
         st.rerun()
 
-with st.sidebar.expander("Manage Sub-Categories", expanded=False):
+with st.sidebar.expander("🏷️ Manage Sub-Categories", expanded=False):
     sub_df = pd.DataFrame(st.session_state['subcategories'], columns=["Sub-Category Name"]).sort_values("Sub-Category Name")
     edited_sub_df = st.data_editor(sub_df, num_rows="dynamic", hide_index=True, use_container_width=True, key="sub_editor")
     if st.button("💾 Save Sub-Categories"):
@@ -279,7 +279,7 @@ with st.sidebar.expander("Manage Sub-Categories", expanded=False):
         st.success("Saved!")
         st.rerun()
 
-with st.sidebar.expander("Manage People", expanded=False):
+with st.sidebar.expander("👥 Manage People", expanded=False):
     ppl_df = pd.DataFrame(st.session_state['people'], columns=["Person Name"]).sort_values("Person Name")
     edited_ppl_df = st.data_editor(ppl_df, num_rows="dynamic", hide_index=True, use_container_width=True, key="ppl_editor")
     if st.button("💾 Save People"):
@@ -318,14 +318,14 @@ with st.sidebar.expander("📝 Manage Rules", expanded=False):
         st.success("✅ Rules Updated!")
         st.rerun()
 
-with st.sidebar.expander("🧠 Teach the App", expanded=True):
+with st.sidebar.expander("🧠 Teach the App", expanded=False):
     new_keyword = st.text_input("Keyword (e.g. Netflix):").lower()
     col_t1, col_t2 = st.columns(2)
     new_cat_rule = col_t1.selectbox("Category:", st.session_state['categories'], key="teach_cat")
     new_sub_rule = col_t2.selectbox("Sub-Category:", [""] + st.session_state['subcategories'], key="teach_sub")
     new_person_rule = st.selectbox("Person:", st.session_state['people'], key="teach_ppl")
     
-    if st.button("Add Rule"):
+    if st.button("➕ Add Rule"):
         if new_keyword:
             new_rule_row = pd.DataFrame([{"Keyword": new_keyword, "Category": new_cat_rule, "SubCategory": new_sub_rule, "Person": new_person_rule}])
             df_rules = pd.concat([df_rules, new_rule_row], ignore_index=True).drop_duplicates(subset=['Keyword'], keep='last')
@@ -382,6 +382,7 @@ with st.sidebar.expander("🧠 Teach the App", expanded=True):
 st.sidebar.markdown("---")
 
 # === SIDEBAR: INPUT METHOD ===
+st.sidebar.header("📤 Import Data")
 input_method = st.sidebar.radio("Input Method:", ["Upload File", "Paste Text"])
 new_data = pd.DataFrame()
 
@@ -449,7 +450,6 @@ if not new_data.empty:
             
             clean_new_data = clean_new_data.apply(apply_rules_smart, axis=1)
             
-            # Reload history fresh
             df_history_reload = load_data("expenses", headers=HEADERS["expenses"])
             if df_history_reload.empty:
                 df_history_reload = pd.DataFrame(columns=HEADERS["expenses"])
@@ -464,7 +464,39 @@ if not new_data.empty:
     except Exception as e: 
         st.sidebar.error(f"Error: {e}")
 
-# === DASHBOARD LOGIC ===
+st.sidebar.markdown("---")
+
+# === SIDEBAR: SETTINGS (BOTTOM) ===
+st.sidebar.header("⚙️ Settings")
+font_choice = st.sidebar.select_slider("Aa Text Size", options=["Small", "Default", "Large"], value="Default")
+font_size = "14px" if font_choice == "Small" else "20px" if font_choice == "Large" else "16px"
+st.markdown(f"<style>html, body, [class*='css'] {{ font-size: {font_size} !important; }}</style>", unsafe_allow_html=True)
+
+st.sidebar.markdown("---")
+
+# === SIDEBAR: CONNECTION INFO (BOTTOM) ===
+st.sidebar.header("📌 Connection")
+if sheet_connected_via_secrets:
+    st.sidebar.success(f"✅ Auto-connected")
+    st.sidebar.caption(f"Sheet: ...{sheet_url[-30:]}")
+else:
+    st.sidebar.info("Manual connection")
+    st.sidebar.caption(f"Sheet: ...{sheet_url[-30:]}")
+    if st.sidebar.button("🔄 Change Sheet"):
+        st.session_state["sheet_url"] = ""
+        st.rerun()
+
+# Add logout button
+st.sidebar.markdown("---")
+if st.sidebar.button("🚪 Logout"):
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+
+# ============================================
+# MAIN DASHBOARD
+# ============================================
+
 filtered_df = pd.DataFrame()
 
 if not df_history.empty and start_date and end_date:
