@@ -23,11 +23,12 @@ def check_password():
 
     def password_entered():
         """Checks whether a password entered by the user is correct."""
-        user = st.session_state["username"]
-        password = st.session_state["password"]
+        # .strip() removes accidental spaces at the end
+        user = st.session_state["username"].strip()
+        password = st.session_state["password"].strip()
         
-        # Access the secure user list from Streamlit Secrets
-        if user in st.secrets["users"] and st.secrets["users"][user] == password:
+        # Check against the [users] section in Streamlit Secrets
+        if "users" in st.secrets and user in st.secrets["users"] and st.secrets["users"][user] == password:
             st.session_state["password_correct"] = True
             st.session_state["current_user"] = user  # Remember who logged in
             del st.session_state["password"]  # Don't store password
@@ -37,19 +38,21 @@ def check_password():
 
     if "password_correct" not in st.session_state:
         # First run, show inputs
+        st.title("🔒 Login")
         st.text_input("Username", key="username")
         st.text_input("Password", type="password", key="password", on_change=password_entered)
         return False
     
     elif not st.session_state["password_correct"]:
         # Password incorrect, show input again
+        st.title("🔒 Login")
         st.text_input("Username", key="username")
         st.text_input("Password", type="password", key="password", on_change=password_entered)
-        st.error("😕 User not found or password incorrect")
+        st.error("😕 User not found or password incorrect. (Check case sensitivity!)")
         return False
     
     else:
-        # Password correct, show welcome
+        # Password correct, allow entry
         return True
 
 if not check_password():
@@ -58,7 +61,7 @@ if not check_password():
 # --- 2. CONNECT TO GOOGLE SHEET ---
 st.sidebar.header("🔌 Connection")
 
-# Allow user to paste their own sheet link
+# Allow user to paste their own sheet link (Decentralized Mode)
 if "sheet_url" not in st.session_state:
     st.session_state["sheet_url"] = ""
 
@@ -71,7 +74,7 @@ if not sheet_url:
     1. Create a new Google Sheet.
     2. Click **Share** (Top Right).
     3. Invite this email as an **Editor**:  
-       `streamlit-bot@YOUR-PROJECT-ID.iam.gserviceaccount.com` (Ask Alex for the exact email)
+       (Check your Streamlit Secrets for the client_email)
     4. Copy the link and paste it here.
     """)
     st.stop()
@@ -84,7 +87,8 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 # --- 3. DATA LOADING FUNCTIONS ---
 def load_data(tab_name, default_df=None):
     try:
-        df = conn.read(spreadsheet=sheet_url, worksheet=tab_name)
+        # We use simple cache ttl to prevent constant reloading
+        df = conn.read(spreadsheet=sheet_url, worksheet=tab_name, ttl=0)
         return df
     except Exception:
         # If tab doesn't exist or is empty, return default
@@ -126,22 +130,14 @@ df_history['SubCategory'] = df_history['SubCategory'].fillna('')
 if 'Locked' not in df_history.columns: df_history['Locked'] = False
 if 'Create Rule' not in df_history.columns: df_history['Create Rule'] = False
 
-# Convert Rules DF to Dictionary for fast lookup
-rules_dict = {}
-for i, row in df_rules.iterrows():
-    rules_dict[str(row['Keyword'])] = {
-        "category": row['Category'], 
-        "subcategory": row['SubCategory'], 
-        "person": row['Person']
-    }
-
 # Lists for Dropdowns
 available_cats = sorted(df_cats["Category Name"].dropna().unique().tolist())
 available_subcats = sorted(df_subs["Sub-Category Name"].dropna().unique().tolist())
 available_people = sorted(df_ppl["Person Name"].dropna().unique().tolist())
 
-# --- 4. DASHBOARD LOGIC (Same as before, updated for Cloud) ---
-st.title("💳 Cloud Expense Tracker")
+# --- 4. DASHBOARD LOGIC ---
+current_user = st.session_state["current_user"]
+st.title(f"💳 {current_user.title()}'s Cloud Expense Tracker")
 
 # ... [FILTERS SECTION] ...
 if not df_history.empty:
@@ -151,10 +147,14 @@ if not df_history.empty:
     start_date, end_date = st.sidebar.date_input("Period", [min_date, max_date])
     
     # Simple Filters
+    st.sidebar.markdown("---")
     selected_cats = st.sidebar.multiselect("Filter Category", available_cats, default=available_cats)
     
     # Filter Logic
-    mask = (df_history['Date'].dt.date >= start_date) & (df_history['Date'].dt.date <= end_date) & (df_history['Category'].isin(selected_cats))
+    mask = (df_history['Date'].dt.date >= start_date) & \
+           (df_history['Date'].dt.date <= end_date) & \
+           (df_history['Category'].isin(selected_cats))
+    
     filtered_df = df_history.loc[mask].copy()
     
     # Metrics
@@ -209,15 +209,20 @@ if not filtered_df.empty:
             save_data(updated_rules_df, "rules")
             st.toast(f"Saved {len(new_rules)} new rules!")
 
-        # 2. Update Main Data
-        # We merge changes back to the main history based on Index (simple version)
-        # For robustness in Cloud, we usually replace the whole dataset or match by ID.
-        # Here we will assume the user filtered view matches what they want to save.
+        # 2. Update Main Data - INDEX MATCHING
+        # We use the index to map edits back to the master dataframe
+        # This handles row deletions if rows are missing from edited_df
         
-        # Map edits back to original DF using Index
+        # Identify deleted rows (indices in filtered_df but NOT in edited_df)
+        deleted_indices = list(set(filtered_df.index) - set(edited_df.index))
+        
+        if deleted_indices:
+            df_history = df_history.drop(deleted_indices)
+            
+        # Identify updated/new rows
         df_history.loc[edited_df.index] = edited_df
         
-        # Convert Date back to string/datetime for GSheets
+        # Convert Date back to string/datetime for GSheets compatibility
         df_history['Date'] = df_history['Date'].astype(str)
         
         save_data(df_history, "expenses")
@@ -231,13 +236,32 @@ else:
 with st.sidebar.expander("Upload New Data"):
     up_file = st.file_uploader("Upload CSV", type=['csv'])
     if up_file and st.button("Process Upload"):
-        new_data = pd.read_csv(up_file)
-        # (Add your cleaning logic here similar to previous versions)
-        # For now, just append
-        new_data['Locked'] = False
-        new_data['Create Rule'] = False
-        
-        combined = pd.concat([df_history, new_data], ignore_index=True)
-        save_data(combined, "expenses")
-        st.success("Uploaded!")
-        st.rerun()
+        try:
+            new_data = pd.read_csv(up_file)
+            
+            # Basic cleanup of uploaded file
+            new_data.columns = [c.strip() for c in new_data.columns]
+            
+            # Ensure required columns exist
+            required_cols = ['Date', 'Description', 'Amount']
+            if not all(col in new_data.columns for col in required_cols):
+                st.error(f"CSV must contain columns: {required_cols}")
+                st.stop()
+
+            # Set Defaults
+            if 'Category' not in new_data.columns: new_data['Category'] = 'Uncategorized'
+            if 'SubCategory' not in new_data.columns: new_data['SubCategory'] = ''
+            if 'Person' not in new_data.columns: new_data['Person'] = 'Family'
+            if 'Source' not in new_data.columns: new_data['Source'] = 'Uploaded'
+            new_data['Locked'] = False
+            new_data['Create Rule'] = False
+            
+            # Append to history
+            combined = pd.concat([df_history, new_data], ignore_index=True)
+            
+            # Save
+            save_data(combined, "expenses")
+            st.success("Uploaded successfully!")
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error processing file: {e}")
