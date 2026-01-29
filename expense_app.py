@@ -54,7 +54,7 @@ if not check_password():
     st.stop()
 
 # --- 2. CONNECT TO GOOGLE SHEET ---
-st.sidebar.header("🔌 Connection")
+st.sidebar.header("📌 Connection")
 
 if "sheet_url" not in st.session_state:
     st.session_state["sheet_url"] = ""
@@ -138,34 +138,40 @@ if not available_people: available_people = sorted(DEFAULT_PEOPLE)
 current_user = st.session_state["current_user"]
 st.title(f"💳 {current_user.title()}'s Cloud Expense Tracker")
 
+# Initialize filtered_df to prevent NameError when df_history is empty
+filtered_df = pd.DataFrame()
+
 # ... [FILTERS SECTION] ...
 if not df_history.empty:
     df_history = df_history.dropna(subset=['Date'])
-    min_date = df_history['Date'].min().date()
-    max_date = df_history['Date'].max().date()
-    start_date, end_date = st.sidebar.date_input("Period", [min_date, max_date])
     
-    # Simple Filters
-    st.sidebar.markdown("---")
-    selected_cats = st.sidebar.multiselect("Filter Category", available_cats, default=available_cats)
-    
-    # Filter Logic
-    mask = (df_history['Date'].dt.date >= start_date) & \
-           (df_history['Date'].dt.date <= end_date) & \
-           (df_history['Category'].isin(selected_cats))
-    
-    filtered_df = df_history.loc[mask].copy()
-    
-    # Metrics
-    if not filtered_df.empty:
-        spend = filtered_df[filtered_df['Amount'] < 0]['Amount'].sum() * -1
-        st.metric("Total Spend", f"${spend:,.2f}")
+    # Check if there's still data after dropping NaT dates
+    if not df_history.empty:
+        min_date = df_history['Date'].min().date()
+        max_date = df_history['Date'].max().date()
+        start_date, end_date = st.sidebar.date_input("Period", [min_date, max_date])
         
-        # Pie Chart
-        st.subheader("Spending by Category")
-        cat_group = filtered_df.groupby('Category')['Amount'].sum().abs().reset_index()
-        fig = px.pie(cat_group, values='Amount', names='Category', hole=0.4)
-        st.plotly_chart(fig)
+        # Simple Filters
+        st.sidebar.markdown("---")
+        selected_cats = st.sidebar.multiselect("Filter Category", available_cats, default=available_cats)
+        
+        # Filter Logic
+        mask = (df_history['Date'].dt.date >= start_date) & \
+               (df_history['Date'].dt.date <= end_date) & \
+               (df_history['Category'].isin(selected_cats))
+        
+        filtered_df = df_history.loc[mask].copy()
+        
+        # Metrics
+        if not filtered_df.empty:
+            spend = filtered_df[filtered_df['Amount'] < 0]['Amount'].sum() * -1
+            st.metric("Total Spend", f"${spend:,.2f}")
+            
+            # Pie Chart
+            st.subheader("Spending by Category")
+            cat_group = filtered_df.groupby('Category')['Amount'].sum().abs().reset_index()
+            fig = px.pie(cat_group, values='Amount', names='Category', hole=0.4)
+            st.plotly_chart(fig)
 
 # ... [EDITOR SECTION] ...
 st.divider()
