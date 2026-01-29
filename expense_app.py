@@ -18,26 +18,38 @@ DEFAULT_PEOPLE = ['Family', 'Partner', 'Business']
 st.set_page_config(page_title="Cloud Expense Tracker", layout="wide", page_icon="💳")
 
 # --- 1. SETUP & AUTHENTICATION ---
-# A simple gatekeeper so random internet people don't use your bot quota
 def check_password():
-    if st.secrets.get("PASSWORD") is None:
-        return True # If no password set in secrets, allow entry (dev mode)
-    
+    """Returns `True` if the user had the correct password."""
+
     def password_entered():
-        if st.session_state["password"] == st.secrets["PASSWORD"]:
+        """Checks whether a password entered by the user is correct."""
+        user = st.session_state["username"]
+        password = st.session_state["password"]
+        
+        # Access the secure user list from Streamlit Secrets
+        if user in st.secrets["users"] and st.secrets["users"][user] == password:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]
+            st.session_state["current_user"] = user  # Remember who logged in
+            del st.session_state["password"]  # Don't store password
+            del st.session_state["username"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        st.text_input("Enter App Password", type="password", on_change=password_entered, key="password")
+        # First run, show inputs
+        st.text_input("Username", key="username")
+        st.text_input("Password", type="password", key="password", on_change=password_entered)
         return False
+    
     elif not st.session_state["password_correct"]:
-        st.text_input("Enter App Password", type="password", on_change=password_entered, key="password")
-        st.error("😕 Password incorrect")
+        # Password incorrect, show input again
+        st.text_input("Username", key="username")
+        st.text_input("Password", type="password", key="password", on_change=password_entered)
+        st.error("😕 User not found or password incorrect")
         return False
+    
     else:
+        # Password correct, show welcome
         return True
 
 if not check_password():
