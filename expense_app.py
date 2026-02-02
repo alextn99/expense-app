@@ -61,7 +61,6 @@ if not check_password():
 # --- 2. CONNECT TO GOOGLE SHEET (Auto-load from secrets) ---
 current_user = st.session_state["current_user"]
 
-# Check if user has a sheet configured in secrets
 if "sheets" in st.secrets and current_user in st.secrets["sheets"]:
     sheet_url = st.secrets["sheets"][current_user]
     sheet_connected_via_secrets = True
@@ -230,24 +229,40 @@ if not df_history.empty:
     # Filter People
     st.sidebar.markdown("**Filter People**")
     all_people = st.sidebar.checkbox("Select All People", value=True)
-    selected_people = st.sidebar.multiselect("Select People", available_people, default=available_people if all_people else [])
+    if all_people:
+        selected_people = available_people
+        st.sidebar.multiselect("Select People", available_people, default=available_people, disabled=True, key="ppl_filter")
+    else:
+        selected_people = st.sidebar.multiselect("Select People", available_people, default=[], key="ppl_filter")
 
     # Filter Categories
     st.sidebar.markdown("**Filter Categories**")
     all_cats = st.sidebar.checkbox("Select All Categories", value=False)
     default_cats_view = [c for c in available_cats if c != 'Transfer/Payment']
-    selected_categories = st.sidebar.multiselect("Select Categories", available_cats, default=available_cats if all_cats else default_cats_view)
+    if all_cats:
+        selected_categories = available_cats
+        st.sidebar.multiselect("Select Categories", available_cats, default=available_cats, disabled=True, key="cat_filter")
+    else:
+        selected_categories = st.sidebar.multiselect("Select Categories", available_cats, default=default_cats_view, key="cat_filter")
     
     # Filter Sub-Categories
     st.sidebar.markdown("**Filter Sub-Categories**")
     all_subs = st.sidebar.checkbox("Select All Sub-Categories", value=True)
-    selected_subcats = st.sidebar.multiselect("Select Sub-Cats", available_subcats, default=available_subcats if all_subs else [])
+    if all_subs:
+        selected_subcats = available_subcats
+        st.sidebar.multiselect("Select Sub-Cats", available_subcats, default=available_subcats, disabled=True, key="sub_filter")
+    else:
+        selected_subcats = st.sidebar.multiselect("Select Sub-Cats", available_subcats, default=[], key="sub_filter")
 
     # Filter Source
     st.sidebar.markdown("**Filter Source**")
     all_sources = st.sidebar.checkbox("Select All Sources", value=True)
     all_sources_list = sorted(df_history['Source'].dropna().unique().tolist())
-    selected_sources = st.sidebar.multiselect("Select Source", all_sources_list, default=all_sources_list if all_sources else [])
+    if all_sources:
+        selected_sources = all_sources_list
+        st.sidebar.multiselect("Select Source", all_sources_list, default=all_sources_list, disabled=True, key="src_filter")
+    else:
+        selected_sources = st.sidebar.multiselect("Select Source", all_sources_list, default=[], key="src_filter")
 else:
     start_date, end_date = None, None
     selected_people, selected_categories, selected_subcats, selected_sources = [], [], [], []
@@ -486,7 +501,6 @@ else:
         st.session_state["sheet_url"] = ""
         st.rerun()
 
-# Add logout button
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Logout"):
     for key in list(st.session_state.keys()):
