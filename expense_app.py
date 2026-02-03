@@ -912,16 +912,50 @@ if not df_history.empty and start_date and end_date:
 
     st.markdown("**Bulk Select (applies to table below):**")
     col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6, col_sel7, col_sel8 = st.columns(8)
-    select_all_delete = col_sel1.button("Select 🗑️", key="sel_all_del", use_container_width=True)
-    clear_all_delete = col_sel2.button("Clear 🗑️", key="clr_all_del", use_container_width=True)
-    select_all_lock = col_sel3.button("Lock 🔒", key="sel_all_lock", use_container_width=True)
-    clear_all_lock = col_sel4.button("Unlock 🔓", key="clr_all_lock", use_container_width=True)
-    select_all_rule = col_sel5.button("Select ➕", key="sel_all_rule", use_container_width=True)
-    clear_all_rule = col_sel6.button("Clear ➕", key="clr_all_rule", use_container_width=True)
-    select_all_amt = col_sel7.button("Select 💲", key="sel_all_amt", use_container_width=True)
-    clear_all_amt = col_sel8.button("Clear 💲", key="clr_all_amt", use_container_width=True)
 
-    if not filtered_df.empty:
+    # Clear cached editor state when any bulk button is clicked
+    if col_sel1.button("Select 🗑️", key="sel_all_del", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'select_delete'
+        st.rerun()
+    if col_sel2.button("Clear 🗑️", key="clr_all_del", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'clear_delete'
+        st.rerun()
+    if col_sel3.button("Lock 🔒", key="sel_all_lock", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'select_lock'
+        st.rerun()
+    if col_sel4.button("Unlock 🔓", key="clr_all_lock", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'clear_lock'
+        st.rerun()
+    if col_sel5.button("Select ➕", key="sel_all_rule", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'select_rule'
+        st.rerun()
+    if col_sel6.button("Clear ➕", key="clr_all_rule", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'clear_rule'
+        st.rerun()
+    if col_sel7.button("Select 💲", key="sel_all_amt", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'select_amt'
+        st.rerun()
+    if col_sel8.button("Clear 💲", key="clr_all_amt", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'clear_amt'
+        st.rerun()
+        
+        if not filtered_df.empty:
         filtered_df_display = filtered_df.copy()
         
         if sort_option == "Date (Newest)":
@@ -949,23 +983,30 @@ if not df_history.empty and start_date and end_date:
         if 'Name' not in filtered_df_display.columns:
             filtered_df_display['Name'] = ''
 
-        if select_all_delete:
-            filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Delete'] = True
-        if clear_all_delete:
-            filtered_df_display['Delete'] = False
-        if select_all_lock:
-            filtered_df_display['Locked'] = True
-        if clear_all_lock:
-            filtered_df_display['Locked'] = False
-        if select_all_rule:
-            filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Create Rule'] = True
-        if clear_all_rule:
-            filtered_df_display['Create Rule'] = False
-        if select_all_amt:
-            filtered_df_display['Include Amt'] = True
-        if clear_all_amt:
-            filtered_df_display['Include Amt'] = False
+# Apply bulk action from session state
+bulk_action = st.session_state.get('bulk_action', None)
+if bulk_action == 'select_delete':
+    filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Delete'] = True
+elif bulk_action == 'clear_delete':
+    filtered_df_display['Delete'] = False
+elif bulk_action == 'select_lock':
+    filtered_df_display['Locked'] = True
+elif bulk_action == 'clear_lock':
+    filtered_df_display['Locked'] = False
+elif bulk_action == 'select_rule':
+    filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Create Rule'] = True
+elif bulk_action == 'clear_rule':
+    filtered_df_display['Create Rule'] = False
+elif bulk_action == 'select_amt':
+    filtered_df_display['Include Amt'] = True
+elif bulk_action == 'clear_amt':
+    filtered_df_display['Include Amt'] = False
 
+# Clear the bulk action after applying
+if bulk_action:
+    st.session_state['bulk_action'] = None
+        
+              
         display_cols = ['id', 'Delete', 'Locked', 'Date', 'Name', 'Amount', 'Category', 'SubCategory', 'Person', 'Description', 'Source', 'Create Rule', 'Include Amt']
         filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
 
