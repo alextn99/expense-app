@@ -3,4 +3,5 @@ pandas
 plotly
 supabase
 extra-streamlit-components
+streamlit-cookies-controller
 
