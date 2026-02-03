@@ -25,21 +25,17 @@ DEFAULT_RULES = {
     "taobao": {"name": "Taobao Purchase", "category": "Shopping", "subcategory": "Online Shopping", "person": "Family"}
 }
 
-# Cookie settings
 COOKIE_NAME = "expense_tracker_auth"
 COOKIE_EXPIRY_DAYS = 30
 
 st.set_page_config(page_title="Cloud Expense Tracker", layout="wide", page_icon="💳")
 
-# Initialize cookie controller
 controller = CookieController()
 
 # ============================================
 # 1. AUTHENTICATION WITH COOKIES
 # ============================================
 def check_password():
-    """Handle login with cookie support for remember me."""
-    
     try:
         saved_cookie = controller.get(COOKIE_NAME)
     except:
@@ -70,11 +66,7 @@ def check_password():
             
             if remember:
                 try:
-                    controller.set(
-                        COOKIE_NAME, 
-                        f"{user}:{password}",
-                        max_age=COOKIE_EXPIRY_DAYS * 24 * 60 * 60
-                    )
+                    controller.set(COOKIE_NAME, f"{user}:{password}", max_age=COOKIE_EXPIRY_DAYS * 24 * 60 * 60)
                 except:
                     pass
             
@@ -110,7 +102,6 @@ if not check_password():
 # 1.5 LICENSE CHECK
 # ============================================
 def check_license():
-    """Check if user has valid account number and license hasn't expired."""
     user = st.session_state["current_user"]
     
     if "licenses" not in st.secrets:
@@ -135,25 +126,19 @@ def check_license():
     try:
         expiry_date = datetime.datetime.strptime(expiry_str, "%Y-%m-%d").date()
     except ValueError:
-        st.error(f"⚠️ Invalid expiry date format. Contact admin.")
+        st.error("⚠️ Invalid expiry date format. Contact admin.")
         return False
     
     today = datetime.date.today()
     
     if today > expiry_date:
         st.title("🔒 License Expired")
-        st.error(f"""
-        ⚠️ **Your license expired on {expiry_date.strftime('%B %d, %Y')}**
-        
-        Account: `{user_account}`
-        
-        Please contact support to renew your subscription.
-        """)
+        st.error(f"⚠️ **Your license expired on {expiry_date.strftime('%B %d, %Y')}**\n\nAccount: `{user_account}`\n\nPlease contact support to renew.")
         return False
     
     days_left = (expiry_date - today).days
     if days_left <= 7:
-        st.error(f"🚨 Your license expires in **{days_left} days**! Renew immediately to avoid interruption.")
+        st.error(f"🚨 Your license expires in **{days_left} days**! Renew immediately.")
     elif days_left <= 30:
         st.warning(f"⏰ Your license expires in **{days_left} days** ({expiry_date.strftime('%b %d, %Y')}). Please renew soon!")
     
@@ -166,7 +151,7 @@ if not check_license():
     st.stop()
 
 # ============================================
-# 2. SUPABASE CONNECTION (Per-User Project)
+# 2. SUPABASE CONNECTION
 # ============================================
 current_user = st.session_state["current_user"]
 
@@ -179,7 +164,7 @@ else:
 
 if not db_connected:
     st.title(f"💳 {current_user.title()}'s Cloud Expense Tracker")
-    st.error(f"⚠️ No database configured for '{current_user}'. Ask the admin to add Supabase credentials to secrets.")
+    st.error(f"⚠️ No database configured for '{current_user}'.")
     st.stop()
 
 @st.cache_resource
@@ -191,8 +176,6 @@ sb = get_supabase_client(sb_url, sb_key)
 # ============================================
 # 3. DATA ACCESS FUNCTIONS
 # ============================================
-
-# Column mappings: DB (lowercase) <-> App (CamelCase)
 EXP_COLS = {
     'date': 'Date', 'description': 'Description', 'amount': 'Amount',
     'name': 'Name', 'category': 'Category', 'subcategory': 'SubCategory', 
@@ -207,7 +190,6 @@ RULES_COLS = {
 RULES_COLS_REV = {v: k for k, v in RULES_COLS.items()}
 
 def prepare_records(df):
-    """Convert DataFrame to clean list of dicts for Supabase."""
     records = []
     for _, row in df.iterrows():
         record = {}
@@ -227,7 +209,6 @@ def prepare_records(df):
         records.append(record)
     return records
 
-# --- EXPENSES ---
 def load_expenses():
     try:
         resp = sb.table("expenses").select("*").execute()
@@ -241,7 +222,6 @@ def load_expenses():
         return pd.DataFrame(columns=['id'] + list(EXP_COLS.values()))
 
 def insert_expenses(df):
-    """Insert new rows (no id — DB auto-generates)."""
     df_save = df.rename(columns=EXP_COLS_REV)
     if 'id' in df_save.columns:
         df_save = df_save.drop(columns=['id'])
@@ -252,7 +232,6 @@ def insert_expenses(df):
         sb.table("expenses").insert(records).execute()
 
 def upsert_expenses(df):
-    """Update existing rows (must include id)."""
     df_save = df.rename(columns=EXP_COLS_REV)
     valid_cols = ['id'] + list(EXP_COLS_REV.values())
     df_save = df_save[[c for c in df_save.columns if c in valid_cols]]
@@ -262,28 +241,19 @@ def upsert_expenses(df):
         sb.table("expenses").upsert(records).execute()
 
 def delete_expenses(ids):
-    """Delete rows by id."""
     for id_val in ids:
         sb.table("expenses").delete().eq("id", int(id_val)).execute()
 
 # --- TRASH / RECYCLE BIN ---
 def move_to_trash(df):
-    """Move expenses to trash table."""
     df_save = df.copy()
-    
-    # Rename columns to DB format
-    rename_map = {}
-    for col in df_save.columns:
-        if col in EXP_COLS_REV:
-            rename_map[col] = EXP_COLS_REV[col]
+    rename_map = {col: EXP_COLS_REV[col] for col in df_save.columns if col in EXP_COLS_REV}
     df_save = df_save.rename(columns=rename_map)
     
-    # Add original_id
     if 'id' in df_save.columns:
         df_save['original_id'] = df_save['id']
         df_save = df_save.drop(columns=['id'])
     
-    # Remove UI-only columns
     cols_to_remove = ['Delete', 'delete', 'Create Rule', 'create rule', 'Include Amt', 'include amt']
     for col in cols_to_remove:
         if col in df_save.columns:
@@ -297,7 +267,6 @@ def move_to_trash(df):
         sb.table("deleted_expenses").insert(records).execute()
 
 def load_trash():
-    """Load all items from trash."""
     try:
         resp = sb.table("deleted_expenses").select("*").order("deleted_at", desc=True).execute()
         if resp.data:
@@ -315,7 +284,6 @@ def load_trash():
         return pd.DataFrame()
 
 def restore_from_trash(ids):
-    """Restore items from trash back to expenses."""
     restored_count = 0
     for trash_id in ids:
         try:
@@ -331,21 +299,11 @@ def restore_from_trash(ids):
     return restored_count
 
 def empty_trash():
-    """Permanently delete all items from trash."""
     try:
         sb.table("deleted_expenses").delete().gte("id", 0).execute()
     except Exception as e:
         st.error(f"Error emptying trash: {e}")
 
-def delete_from_trash(ids):
-    """Permanently delete specific items from trash."""
-    for trash_id in ids:
-        try:
-            sb.table("deleted_expenses").delete().eq("id", int(trash_id)).execute()
-        except:
-            pass
-
-# --- REFERENCE LISTS (categories, subcategories, people) ---
 def load_list(table_name):
     try:
         resp = sb.table(table_name).select("name").execute()
@@ -356,7 +314,6 @@ def load_list(table_name):
         return []
 
 def save_list(table_name, items):
-    """Replace all items in a reference table."""
     try:
         sb.table(table_name).delete().gte("id", 0).execute()
         if items:
@@ -364,7 +321,6 @@ def save_list(table_name, items):
     except Exception as e:
         st.error(f"Error saving {table_name}: {e}")
 
-# --- RULES ---
 def load_rules():
     try:
         resp = sb.table("rules").select("*").execute()
@@ -377,7 +333,6 @@ def load_rules():
         return pd.DataFrame(columns=['id'] + list(RULES_COLS.values()))
 
 def save_rules_full(df):
-    """Replace ALL rules (delete + insert)."""
     try:
         sb.table("rules").delete().gte("id", 0).execute()
         df_save = df.rename(columns=RULES_COLS_REV)
@@ -392,7 +347,6 @@ def save_rules_full(df):
         st.error(f"Error saving rules: {e}")
 
 def add_rules(new_rules_df):
-    """Add new rules (upsert on keyword conflict)."""
     df_save = new_rules_df.rename(columns=RULES_COLS_REV)
     if 'id' in df_save.columns:
         df_save = df_save.drop(columns=['id'])
@@ -402,9 +356,7 @@ def add_rules(new_rules_df):
     if records:
         sb.table("rules").upsert(records, on_conflict="keyword").execute()
 
-# --- RULE MATCHING ---
 def get_match(description, amount, rules_df):
-    """Match description and optionally exact amount to return name, category, subcategory, person."""
     desc = str(description).lower()
     if rules_df.empty:
         return None, None, None, None
@@ -416,11 +368,9 @@ def get_match(description, amount, rules_df):
     for _, row in rules_sorted.iterrows():
         if str(row['Keyword']).lower() in desc:
             rule_amount = row.get('Amount')
-            
             if pd.notna(rule_amount) and rule_amount is not None:
                 if amount is None or abs(float(amount) - float(rule_amount)) > 0.01:
                     continue
-            
             return (
                 row.get('Name', '') if pd.notna(row.get('Name')) else '',
                 row['Category'], 
@@ -451,23 +401,12 @@ try:
         loaded_people = sorted(DEFAULT_PEOPLE)
     
     if df_rules.empty:
-        seed_rules = [
-            {
-                "Keyword": k, 
-                "Name": v["name"],
-                "Category": v["category"], 
-                "SubCategory": v["subcategory"], 
-                "Person": v["person"],
-                "Amount": None
-            } 
-            for k, v in DEFAULT_RULES.items()
-        ]
+        seed_rules = [{"Keyword": k, "Name": v["name"], "Category": v["category"], "SubCategory": v["subcategory"], "Person": v["person"], "Amount": None} for k, v in DEFAULT_RULES.items()]
         df_rules = pd.DataFrame(seed_rules)
         save_rules_full(df_rules)
         df_rules = load_rules()
-
 except Exception as e:
-    st.error(f"Error connecting to database.\n\nDetails: {e}")
+    st.error(f"Error connecting to database: {e}")
     st.stop()
 
 # ============================================
@@ -509,10 +448,8 @@ if 'people' not in st.session_state:
 st.title(f"💳 {current_user.title()}'s Cloud Expense Tracker")
 
 # ============================================
-# SIDEBAR (Filters at Top, Settings at Bottom)
+# SIDEBAR
 # ============================================
-
-# === FILTERS (TOP) ===
 st.sidebar.header("🔘 Filters")
 
 if not df_history.empty:
@@ -528,14 +465,10 @@ if not df_history.empty:
 
     data_people = df_history['Person'].dropna().unique().tolist()
     available_people = sorted(list(set(st.session_state['people'] + data_people)))
-    
     data_cats = df_history['Category'].dropna().unique().tolist()
     available_cats = sorted(list(set(st.session_state['categories'] + data_cats)))
-    
-    data_subs = df_history['SubCategory'].dropna().unique().tolist()
-    data_subs = [x for x in data_subs if x != '']
+    data_subs = [x for x in df_history['SubCategory'].dropna().unique().tolist() if x != '']
     available_subcats = sorted(list(set(st.session_state['subcategories'] + data_subs)))
-    
     all_sources_list = sorted(df_history['Source'].dropna().unique().tolist())
 
     if 'ppl_selection' not in st.session_state:
@@ -547,7 +480,6 @@ if not df_history.empty:
     if 'src_selection' not in st.session_state:
         st.session_state['src_selection'] = all_sources_list
 
-    # --- FILTER: People ---
     st.sidebar.markdown("**Filter People**")
     col_ppl1, col_ppl2 = st.sidebar.columns(2)
     if col_ppl1.button("✅ All", key="btn_all_ppl", use_container_width=True):
@@ -556,16 +488,9 @@ if not df_history.empty:
     if col_ppl2.button("🗑️ Clear", key="btn_clr_ppl", use_container_width=True):
         st.session_state['ppl_selection'] = []
         st.rerun()
-    selected_people = st.sidebar.multiselect(
-        "People",
-        available_people,
-        default=st.session_state['ppl_selection'],
-        key="ppl_filter",
-        label_visibility="collapsed"
-    )
+    selected_people = st.sidebar.multiselect("People", available_people, default=st.session_state['ppl_selection'], key="ppl_filter", label_visibility="collapsed")
     st.session_state['ppl_selection'] = selected_people
 
-    # --- FILTER: Categories ---
     st.sidebar.markdown("**Filter Categories**")
     col_cat1, col_cat2 = st.sidebar.columns(2)
     if col_cat1.button("✅ All", key="btn_all_cat", use_container_width=True):
@@ -574,16 +499,9 @@ if not df_history.empty:
     if col_cat2.button("🗑️ Clear", key="btn_clr_cat", use_container_width=True):
         st.session_state['cat_selection'] = []
         st.rerun()
-    selected_categories = st.sidebar.multiselect(
-        "Categories",
-        available_cats,
-        default=st.session_state['cat_selection'],
-        key="cat_filter",
-        label_visibility="collapsed"
-    )
+    selected_categories = st.sidebar.multiselect("Categories", available_cats, default=st.session_state['cat_selection'], key="cat_filter", label_visibility="collapsed")
     st.session_state['cat_selection'] = selected_categories
 
-    # --- FILTER: Sub-Categories ---
     st.sidebar.markdown("**Filter Sub-Categories**")
     col_sub1, col_sub2 = st.sidebar.columns(2)
     if col_sub1.button("✅ All", key="btn_all_sub", use_container_width=True):
@@ -592,16 +510,9 @@ if not df_history.empty:
     if col_sub2.button("🗑️ Clear", key="btn_clr_sub", use_container_width=True):
         st.session_state['sub_selection'] = []
         st.rerun()
-    selected_subcats = st.sidebar.multiselect(
-        "Sub-Categories",
-        available_subcats,
-        default=st.session_state['sub_selection'],
-        key="sub_filter",
-        label_visibility="collapsed"
-    )
+    selected_subcats = st.sidebar.multiselect("Sub-Categories", available_subcats, default=st.session_state['sub_selection'], key="sub_filter", label_visibility="collapsed")
     st.session_state['sub_selection'] = selected_subcats
 
-    # --- FILTER: Source ---
     st.sidebar.markdown("**Filter Source**")
     col_src1, col_src2 = st.sidebar.columns(2)
     if col_src1.button("✅ All", key="btn_all_src", use_container_width=True):
@@ -610,20 +521,12 @@ if not df_history.empty:
     if col_src2.button("🗑️ Clear", key="btn_clr_src", use_container_width=True):
         st.session_state['src_selection'] = []
         st.rerun()
-    selected_sources = st.sidebar.multiselect(
-        "Source",
-        all_sources_list,
-        default=st.session_state['src_selection'],
-        key="src_filter",
-        label_visibility="collapsed"
-    )
+    selected_sources = st.sidebar.multiselect("Source", all_sources_list, default=st.session_state['src_selection'], key="src_filter", label_visibility="collapsed")
     st.session_state['src_selection'] = selected_sources
-
 else:
     start_date, end_date = None, None
     selected_people, selected_categories, selected_subcats, selected_sources = [], [], [], []
-    search_term = ""
-    search_field = "Both"
+    search_term, search_field = "", "Both"
     available_cats = st.session_state['categories']
     available_subcats = st.session_state['subcategories']
     available_people = st.session_state['people']
@@ -664,31 +567,28 @@ with st.sidebar.expander("👥 Manage People", expanded=False):
 with st.sidebar.expander("📝 Manage Rules", expanded=False):
     sort_option_rules = st.radio("Sort Rules by:", ["Keyword", "Name", "Category", "SubCategory"], horizontal=True, key="rule_sort")
     rules_display = df_rules.drop(columns=['id'], errors='ignore').copy()
-    
     for col in ['Keyword', 'Name', 'Category', 'SubCategory', 'Person', 'Amount']:
         if col not in rules_display.columns:
             rules_display[col] = None if col == 'Amount' else ''
     
-    if sort_option_rules == "Keyword": 
+    if sort_option_rules == "Keyword":
         rules_display = rules_display.sort_values(by="Keyword")
-    elif sort_option_rules == "Name": 
+    elif sort_option_rules == "Name":
         rules_display = rules_display.sort_values(by=["Name", "Keyword"])
-    elif sort_option_rules == "Category": 
+    elif sort_option_rules == "Category":
         rules_display = rules_display.sort_values(by=["Category", "Keyword"])
-    elif sort_option_rules == "SubCategory": 
+    elif sort_option_rules == "SubCategory":
         rules_display = rules_display.sort_values(by=["SubCategory", "Keyword"])
 
-    edited_rules = st.data_editor(
-        rules_display, num_rows="dynamic", use_container_width=True, hide_index=True, key="rule_editor",
+    edited_rules = st.data_editor(rules_display, num_rows="dynamic", use_container_width=True, hide_index=True, key="rule_editor",
         column_config={
-            "Keyword": st.column_config.TextColumn("Keyword", disabled=False),
-            "Name": st.column_config.TextColumn("Name", help="Friendly name to assign"),
+            "Keyword": st.column_config.TextColumn("Keyword"),
+            "Name": st.column_config.TextColumn("Name"),
             "Category": st.column_config.SelectboxColumn("Category", options=st.session_state['categories'], required=True),
-            "SubCategory": st.column_config.SelectboxColumn("SubCategory", options=st.session_state['subcategories'], required=False),
+            "SubCategory": st.column_config.SelectboxColumn("SubCategory", options=st.session_state['subcategories']),
             "Person": st.column_config.SelectboxColumn("Person", options=st.session_state['people'], required=True),
-            "Amount": st.column_config.NumberColumn("Amount", help="Optional: Only match if amount equals this exactly", format="%.2f")
-        }
-    )
+            "Amount": st.column_config.NumberColumn("Amount", format="%.2f")
+        })
     if st.button("💾 Save Rule Changes"):
         edited_rules['Keyword'] = edited_rules['Keyword'].str.lower().str.strip()
         edited_rules = edited_rules.dropna(subset=['Keyword'])
@@ -705,19 +605,11 @@ with st.sidebar.expander("🧠 Teach the App", expanded=False):
     new_cat_rule = col_t1.selectbox("Category:", st.session_state['categories'], key="teach_cat")
     new_sub_rule = col_t2.selectbox("Sub-Category:", [""] + st.session_state['subcategories'], key="teach_sub")
     new_person_rule = st.selectbox("Person:", st.session_state['people'], key="teach_ppl")
-    
-    new_amount = st.number_input("Exact Amount (optional)", value=None, step=0.01, key="teach_amt", help="Leave blank to match any amount")
+    new_amount = st.number_input("Exact Amount (optional)", value=None, step=0.01, key="teach_amt")
     
     if st.button("➕ Add Rule"):
         if new_keyword:
-            new_rule_row = pd.DataFrame([{
-                "Keyword": new_keyword, 
-                "Name": new_name,
-                "Category": new_cat_rule, 
-                "SubCategory": new_sub_rule, 
-                "Person": new_person_rule,
-                "Amount": new_amount
-            }])
+            new_rule_row = pd.DataFrame([{"Keyword": new_keyword, "Name": new_name, "Category": new_cat_rule, "SubCategory": new_sub_rule, "Person": new_person_rule, "Amount": new_amount}])
             add_rules(new_rule_row)
             st.success(f"Saved! '{new_keyword}' -> {new_name} ({new_cat_rule})")
             st.rerun()
@@ -726,20 +618,11 @@ with st.sidebar.expander("🧠 Teach the App", expanded=False):
         if not df_history.empty:
             existing_keywords = df_rules['Keyword'].str.lower().tolist() if not df_rules.empty else []
             new_rules_list = []
-            
             for _, row in df_history.iterrows():
                 desc_key = str(row['Description']).lower().strip()
                 if row['Category'] != 'Uncategorized' and desc_key not in existing_keywords:
-                    new_rules_list.append({
-                        "Keyword": desc_key,
-                        "Name": row.get('Name', '') if pd.notna(row.get('Name')) else '',
-                        "Category": row['Category'],
-                        "SubCategory": row.get('SubCategory', ''),
-                        "Person": row['Person'],
-                        "Amount": None
-                    })
+                    new_rules_list.append({"Keyword": desc_key, "Name": row.get('Name', '') if pd.notna(row.get('Name')) else '', "Category": row['Category'], "SubCategory": row.get('SubCategory', ''), "Person": row['Person'], "Amount": None})
                     existing_keywords.append(desc_key)
-            
             if new_rules_list:
                 add_rules(pd.DataFrame(new_rules_list))
             st.success(f"✅ Learned {len(new_rules_list)} new rules!")
@@ -762,7 +645,6 @@ with st.sidebar.expander("🧠 Teach the App", expanded=False):
                     df_history.at[idx, 'Person'] = person
                 if name or cat or sub or person:
                     changed_ids.append(idx)
-            
             if changed_ids:
                 upsert_expenses(df_history.loc[changed_ids])
             st.success(f"✅ Rules Re-Applied to {len(changed_ids)} transactions!")
@@ -771,42 +653,21 @@ with st.sidebar.expander("🧠 Teach the App", expanded=False):
 # === RECYCLE BIN ===
 with st.sidebar.expander("🗑️ Recycle Bin", expanded=False):
     trash_df = load_trash()
-    
     if not trash_df.empty:
         trash_count = len(trash_df)
         st.warning(f"**{trash_count} items in trash**")
-        
         trash_display = trash_df.copy()
         if 'Date' in trash_display.columns:
             trash_display['Date'] = pd.to_datetime(trash_display['Date'], errors='coerce').dt.date
         if 'Deleted At' in trash_display.columns:
             trash_display['Deleted At'] = pd.to_datetime(trash_display['Deleted At'], errors='coerce').dt.strftime('%b %d, %H:%M')
-        
         trash_display['Restore'] = False
-        
         display_trash_cols = ['id', 'Restore', 'Date', 'Name', 'Description', 'Amount', 'Category', 'Deleted At']
         trash_display = trash_display[[c for c in display_trash_cols if c in trash_display.columns]]
-        
-        edited_trash = st.data_editor(
-            trash_display,
-            column_config={
-                "id": None,
-                "Restore": st.column_config.CheckboxColumn("✅", width="small", help="Select to restore"),
-                "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
-                "Date": st.column_config.DateColumn("Date"),
-                "Deleted At": st.column_config.TextColumn("Deleted")
-            },
-            hide_index=True,
-            use_container_width=True,
-            height=200,
-            key="trash_editor"
-        )
-        
+        edited_trash = st.data_editor(trash_display, column_config={"id": None, "Restore": st.column_config.CheckboxColumn("✅", width="small"), "Amount": st.column_config.NumberColumn("Amount", format="$%.2f")}, hide_index=True, use_container_width=True, height=200, key="trash_editor")
         selected_restore = edited_trash[edited_trash['Restore'] == True] if 'Restore' in edited_trash.columns else pd.DataFrame()
         restore_count = len(selected_restore)
-        
         col_trash1, col_trash2 = st.columns(2)
-        
         if restore_count > 0:
             if col_trash1.button(f"♻️ Restore ({restore_count})", use_container_width=True, key="btn_restore"):
                 ids_to_restore = selected_restore['id'].dropna().tolist()
@@ -815,12 +676,10 @@ with st.sidebar.expander("🗑️ Recycle Bin", expanded=False):
                 st.rerun()
         else:
             col_trash1.button("♻️ Restore (0)", disabled=True, use_container_width=True, key="btn_restore_disabled")
-        
         if col_trash2.button("🗑️ Empty Trash", use_container_width=True, key="btn_empty"):
             st.session_state['confirm_empty_trash'] = True
-        
         if st.session_state.get('confirm_empty_trash', False):
-            st.error(f"⚠️ Permanently delete all {trash_count} items? This cannot be undone!")
+            st.error(f"⚠️ Permanently delete all {trash_count} items?")
             col_c1, col_c2 = st.columns(2)
             if col_c1.button("✅ Yes, Empty", key="confirm_empty_yes"):
                 empty_trash()
@@ -835,11 +694,9 @@ with st.sidebar.expander("🗑️ Recycle Bin", expanded=False):
 
 st.sidebar.markdown("---")
 
-# === IMPORT DATA (with Manual Source) ===
+# === IMPORT DATA ===
 st.sidebar.header("📤 Import Data")
-
-manual_source = st.sidebar.text_input("Source Name", placeholder="e.g. HSBC Credit, Chase Debit", key="source_input")
-
+manual_source = st.sidebar.text_input("Source Name", placeholder="e.g. HSBC Credit", key="source_input")
 input_method = st.sidebar.radio("Input Method:", ["Upload File", "Paste Text"])
 new_data = pd.DataFrame()
 
@@ -847,23 +704,18 @@ if input_method == "Upload File":
     uploaded_file = st.sidebar.file_uploader("Upload CSV/Excel", type=["csv", "xlsx"])
     if uploaded_file:
         try:
-            if uploaded_file.name.endswith('.csv'): 
-                new_data = pd.read_csv(uploaded_file)
-            else: 
-                new_data = pd.read_excel(uploaded_file)
-        except: 
+            new_data = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
+        except:
             pass
-
 elif input_method == "Paste Text":
     pasted_text = st.sidebar.text_area("Paste CSV Data", height=150)
     if st.sidebar.button("Process"):
         if pasted_text:
-            try: 
+            try:
                 new_data = pd.read_csv(io.StringIO(pasted_text), sep=',')
-            except: 
+            except:
                 pass
 
-# --- PROCESS NEW DATA ---
 if not new_data.empty:
     try:
         new_data.columns = [str(c).lower().strip() for c in new_data.columns]
@@ -871,7 +723,6 @@ if not new_data.empty:
         desc_col = next((c for c in new_data.columns if 'desc' in c or 'memo' in c), None)
         amt_col = next((c for c in new_data.columns if 'amount' in c or 'debit' in c or 'value' in c or 'hkd' in c), None)
         src_col = next((c for c in new_data.columns if 'source' in c), None)
-        
         name_col_in = next((c for c in new_data.columns if c == 'name'), None)
         cat_col_in = next((c for c in new_data.columns if 'category' in c and 'sub' not in c), None)
         sub_col_in = next((c for c in new_data.columns if 'sub' in c), None)
@@ -880,13 +731,7 @@ if not new_data.empty:
         if date_col and desc_col and amt_col:
             new_data[amt_col] = new_data[amt_col].astype(str).str.upper().str.replace('CR','').str.replace('DR','').str.replace(',','').str.replace('$','')
             new_data[amt_col] = pd.to_numeric(new_data[amt_col], errors='coerce')
-            
-            if src_col:
-                file_source = new_data[src_col]
-            elif manual_source:
-                file_source = manual_source
-            else:
-                file_source = "Pasted/Uploaded"
+            file_source = new_data[src_col] if src_col else (manual_source if manual_source else "Pasted/Uploaded")
             
             clean_new_data = pd.DataFrame({
                 'Date': pd.to_datetime(new_data[date_col], errors='coerce'),
@@ -902,23 +747,20 @@ if not new_data.empty:
             clean_new_data = clean_new_data.dropna(subset=['Date', 'Amount'])
             
             def apply_rules_smart(row):
-                if row['Category'] != 'Uncategorized' and pd.notna(row['Category']) and row.get('Name', '') != '': 
+                if row['Category'] != 'Uncategorized' and pd.notna(row['Category']) and row.get('Name', '') != '':
                     return row
-                
                 name, cat, sub, person = get_match(row['Description'], row['Amount'], df_rules)
-                
                 if name and (row.get('Name', '') == '' or pd.isna(row.get('Name', ''))):
                     row['Name'] = name
-                if cat and (row['Category'] == 'Uncategorized' or pd.isna(row['Category'])): 
+                if cat and (row['Category'] == 'Uncategorized' or pd.isna(row['Category'])):
                     row['Category'] = cat
-                if sub and (row.get('SubCategory', '') == '' or pd.isna(row.get('SubCategory', ''))): 
+                if sub and (row.get('SubCategory', '') == '' or pd.isna(row.get('SubCategory', ''))):
                     row['SubCategory'] = sub
-                if person and (row.get('Person', '') == '' or pd.isna(row.get('Person', ''))): 
+                if person and (row.get('Person', '') == '' or pd.isna(row.get('Person', ''))):
                     row['Person'] = person
                 return row
             
             clean_new_data = clean_new_data.apply(apply_rules_smart, axis=1)
-            
             existing = load_expenses()
             if not existing.empty:
                 existing['_key'] = existing['Date'].astype(str) + '|' + existing['Description'].astype(str) + '|' + existing['Amount'].astype(str)
@@ -930,27 +772,23 @@ if not new_data.empty:
             if not truly_new.empty:
                 insert_expenses(truly_new)
                 st.sidebar.success(f"✅ Added {len(truly_new)} new transactions!")
-                if len(truly_new) < len(clean_new_data):
-                    st.sidebar.info(f"ℹ️ Skipped {len(clean_new_data) - len(truly_new)} duplicates.")
             else:
-                st.sidebar.warning("⚠️ All transactions already exist (duplicates).")
+                st.sidebar.warning("⚠️ All transactions already exist.")
             st.rerun()
-        else: 
+        else:
             st.sidebar.error("Headers missing (need Date, Description, Amount).")
-    except Exception as e: 
+    except Exception as e:
         st.sidebar.error(f"Error: {e}")
 
 st.sidebar.markdown("---")
 
-# === SETTINGS (BOTTOM) ===
+# === SETTINGS ===
 st.sidebar.header("⚙️ Settings")
 font_choice = st.sidebar.select_slider("Aa Text Size", options=["Small", "Default", "Large"], value="Default")
 font_size = "14px" if font_choice == "Small" else "20px" if font_choice == "Large" else "16px"
 st.markdown(f"<style>html, body, [class*='css'] {{ font-size: {font_size} !important; }}</style>", unsafe_allow_html=True)
 
 st.sidebar.markdown("---")
-
-# === LICENSE INFO ===
 st.sidebar.header("📄 License")
 if "user_account" in st.session_state:
     st.sidebar.text(f"Account: {st.session_state['user_account']}")
@@ -961,15 +799,11 @@ if "license_expiry" in st.session_state:
     st.sidebar.text(f"Days left: {days_left}")
 
 st.sidebar.markdown("---")
-
-# === CONNECTION INFO (BOTTOM) ===
 st.sidebar.header("📌 Connection")
 st.sidebar.success("✅ Connected to Supabase")
 st.sidebar.caption(f"Project: ...{sb_url[-25:]}")
 
 st.sidebar.markdown("---")
-
-# === LOGOUT (with cookie clearing) ===
 if st.sidebar.button("🚪 Logout"):
     try:
         controller.remove(COOKIE_NAME)
@@ -982,20 +816,14 @@ if st.sidebar.button("🚪 Logout"):
 # ============================================
 # MAIN DASHBOARD
 # ============================================
-
 filtered_df = pd.DataFrame()
 
 if not df_history.empty and start_date and end_date:
     st.subheader(f"📅 PERIOD: {start_date.strftime('%b %d, %Y')} - {end_date.strftime('%b %d, %Y')}")
     st.divider()
 
-    mask = (df_history['Date'].dt.date >= start_date) & \
-           (df_history['Date'].dt.date <= end_date) & \
-           (df_history['Category'].isin(selected_categories)) & \
-           (df_history['SubCategory'].isin(selected_subcats) | (df_history['SubCategory'] == '')) & \
-           (df_history['Person'].isin(selected_people)) & \
-           (df_history['Source'].isin(selected_sources))
-           
+    mask = (df_history['Date'].dt.date >= start_date) & (df_history['Date'].dt.date <= end_date) & (df_history['Category'].isin(selected_categories)) & (df_history['SubCategory'].isin(selected_subcats) | (df_history['SubCategory'] == '')) & (df_history['Person'].isin(selected_people)) & (df_history['Source'].isin(selected_sources))
+    
     if search_term:
         keywords = [k.strip() for k in search_term.replace(',', ' ').split() if k.strip()]
         if keywords:
@@ -1005,21 +833,16 @@ if not df_history.empty and start_date and end_date:
             elif search_field == "Description":
                 mask = mask & df_history['Description'].astype(str).str.contains(pattern, case=False, na=False)
             else:
-                mask = mask & (
-                    df_history['Name'].astype(str).str.contains(pattern, case=False, na=False) |
-                    df_history['Description'].astype(str).str.contains(pattern, case=False, na=False)
-                )
+                mask = mask & (df_history['Name'].astype(str).str.contains(pattern, case=False, na=False) | df_history['Description'].astype(str).str.contains(pattern, case=False, na=False))
 
     filtered_df = df_history.loc[mask].copy()
 
-    # --- METRICS ---
+    # METRICS
     total_expense_gross = filtered_df[filtered_df['Amount'] < 0]['Amount'].sum() * -1
     total_refunds = filtered_df[filtered_df['Amount'] > 0]['Amount'].sum()
     net_spend = total_expense_gross - total_refunds
-    
     cat_group = filtered_df.groupby('Category')['Amount'].sum().reset_index()
     cat_group['AbsAmount'] = cat_group['Amount'] * -1
-    
     p_group = filtered_df.groupby('Person')['Amount'].sum().reset_index()
     p_group['AbsAmount'] = p_group['Amount'] * -1
 
@@ -1029,42 +852,35 @@ if not df_history.empty and start_date and end_date:
     col_m3.metric("↩️ Refunds/Income", f"${total_refunds:,.2f}")
 
     col_main_1, col_main_2 = st.columns(2)
-
     with col_main_1:
         st.subheader("Spending by Category")
         cat_pie = cat_group[cat_group['AbsAmount'] > 0]
         if not cat_pie.empty:
             fig = px.pie(cat_pie, values='AbsAmount', names='Category', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
-            
-            st.markdown("##### Category Table")
             cat_display = cat_group.sort_values(by='AbsAmount', ascending=False)
             cat_display['Total'] = cat_display['AbsAmount'].apply(lambda x: f"${x:,.2f}")
             st.dataframe(cat_display[['Category', 'Total']], hide_index=True, use_container_width=True)
-            
+
     with col_main_2:
         st.subheader("Spending by Person")
         p_pie = p_group[p_group['AbsAmount'] > 0]
         if not p_pie.empty:
             fig2 = px.pie(p_pie, values='AbsAmount', names='Person', hole=0.4, color_discrete_sequence=px.colors.qualitative.Set3)
             st.plotly_chart(fig2, use_container_width=True)
-            
-            st.markdown("##### Person Table")
             p_display = p_group.sort_values(by='AbsAmount', ascending=False)
             p_display['Total'] = p_display['AbsAmount'].apply(lambda x: f"${x:,.2f}")
             st.dataframe(p_display[['Person', 'Total']], hide_index=True, use_container_width=True)
 
-    # --- DEEP DIVE ---
+    # DEEP DIVE
     st.markdown("---")
     st.subheader("📊 Category Deep Dive")
     col_dd1, col_dd2 = st.columns([1, 1])
-
     with col_dd1:
         st.markdown("**1. Select a Category:**")
         cat_master = cat_group[cat_group['AbsAmount'] > 0].sort_values(by='AbsAmount', ascending=False)
         cat_master['Total'] = cat_master['AbsAmount'].apply(lambda x: f"${x:,.2f}")
         selection = st.dataframe(cat_master[['Category', 'Total']], use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row")
-    
     with col_dd2:
         st.markdown("**2. Sub-Category Breakdown:**")
         if selection.selection.rows:
@@ -1078,245 +894,178 @@ if not df_history.empty and start_date and end_date:
             st.info(f"Drilling down into: **{selected_cat}**")
             st.dataframe(sub_breakdown[['SubCategory', 'Total']], use_container_width=True, hide_index=True)
         else:
-            st.info("👈 Click a Category on the left to see details here.")
+            st.info("👈 Click a Category on the left to see details.")
 
-# --- TRANSACTION EDITOR ---
-st.markdown("---")
-st.subheader("📝 Transaction Editor")
-
-# Row 1: Sort dropdown
-sort_option = st.selectbox(
-    "Sort By:", 
-    [
-        "Date (Newest)",
-        "Date (Oldest)", 
-        "Amount (Lowest first - Big Spends)", 
-        "Amount (Highest first - Income)", 
-        "Name (A-Z)",
-        "Name (Z-A)",
-        "Description (A-Z)", 
-        "Description (Z-A)",
-        "Native (Click Headers to Sort)"
-    ]
-)
-
-# Row 2: Bulk Select buttons for checkboxes
-st.markdown("**Bulk Select (applies to table below):**")
-col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6, col_sel7, col_sel8 = st.columns(8)
-
-select_all_delete = col_sel1.button("Select 🗑️", key="sel_all_del", use_container_width=True, help="Select all for deletion")
-clear_all_delete = col_sel2.button("Clear 🗑️", key="clr_all_del", use_container_width=True, help="Unselect all for deletion")
-select_all_lock = col_sel3.button("Lock 🔒", key="sel_all_lock", use_container_width=True, help="Lock all entries shown")
-clear_all_lock = col_sel4.button("Unlock 🔓", key="clr_all_lock", use_container_width=True, help="Unlock all entries shown")
-select_all_rule = col_sel5.button("Select ➕", key="sel_all_rule", use_container_width=True, help="Check all Create Rule boxes")
-clear_all_rule = col_sel6.button("Clear ➕", key="clr_all_rule", use_container_width=True, help="Uncheck all Create Rule boxes")
-select_all_amt = col_sel7.button("Select 💲", key="sel_all_amt", use_container_width=True, help="Check all Include Amt boxes")
-clear_all_amt = col_sel8.button("Clear 💲", key="clr_all_amt", use_container_width=True, help="Uncheck all Include Amt boxes")
-
-if not filtered_df.empty:
-    filtered_df_display = filtered_df.copy()
+    # TRANSACTION EDITOR
+    st.markdown("---")
+    st.subheader("📝 Transaction Editor")
     
-    # Apply sorting
-    if sort_option == "Date (Newest)":
-        filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=False)
-    elif sort_option == "Date (Oldest)":
-        filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=True)
-    elif sort_option == "Amount (Lowest first - Big Spends)":
-        filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=True)
-    elif sort_option == "Amount (Highest first - Income)":
-        filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=False)
-    elif sort_option == "Name (A-Z)":
-        filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=True)
-    elif sort_option == "Name (Z-A)":
-        filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=False)
-    elif sort_option == "Description (A-Z)":
-        filtered_df_display = filtered_df_display.sort_values(by="Description", ascending=True)
-    elif sort_option == "Description (Z-A)":
-        filtered_df_display = filtered_df_display.sort_values(by="Description", ascending=False)
+    sort_option = st.selectbox("Sort By:", ["Date (Newest)", "Date (Oldest)", "Amount (Lowest first - Big Spends)", "Amount (Highest first - Income)", "Name (A-Z)", "Name (Z-A)", "Description (A-Z)", "Description (Z-A)", "Native (Click Headers to Sort)"])
 
-    filtered_df_display['Date'] = filtered_df_display['Date'].dt.date
-    
-    # Add UI-only columns
-    filtered_df_display['Delete'] = False
-    filtered_df_display['Create Rule'] = False
-    filtered_df_display['Include Amt'] = False
-    filtered_df_display['Locked'] = filtered_df_display['Locked'].fillna(False).astype(bool)
-    
-    if 'Name' not in filtered_df_display.columns:
-        filtered_df_display['Name'] = ''
-    
-    # Apply bulk select buttons
-    if select_all_delete:
-        filtered_df_display['Delete'] = True
-    if clear_all_delete:
+    st.markdown("**Bulk Select (applies to table below):**")
+    col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6, col_sel7, col_sel8 = st.columns(8)
+    select_all_delete = col_sel1.button("Select 🗑️", key="sel_all_del", use_container_width=True)
+    clear_all_delete = col_sel2.button("Clear 🗑️", key="clr_all_del", use_container_width=True)
+    select_all_lock = col_sel3.button("Lock 🔒", key="sel_all_lock", use_container_width=True)
+    clear_all_lock = col_sel4.button("Unlock 🔓", key="clr_all_lock", use_container_width=True)
+    select_all_rule = col_sel5.button("Select ➕", key="sel_all_rule", use_container_width=True)
+    clear_all_rule = col_sel6.button("Clear ➕", key="clr_all_rule", use_container_width=True)
+    select_all_amt = col_sel7.button("Select 💲", key="sel_all_amt", use_container_width=True)
+    clear_all_amt = col_sel8.button("Clear 💲", key="clr_all_amt", use_container_width=True)
+
+    if not filtered_df.empty:
+        filtered_df_display = filtered_df.copy()
+        
+        if sort_option == "Date (Newest)":
+            filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=False)
+        elif sort_option == "Date (Oldest)":
+            filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=True)
+        elif sort_option == "Amount (Lowest first - Big Spends)":
+            filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=True)
+        elif sort_option == "Amount (Highest first - Income)":
+            filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=False)
+        elif sort_option == "Name (A-Z)":
+            filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=True)
+        elif sort_option == "Name (Z-A)":
+            filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=False)
+        elif sort_option == "Description (A-Z)":
+            filtered_df_display = filtered_df_display.sort_values(by="Description", ascending=True)
+        elif sort_option == "Description (Z-A)":
+            filtered_df_display = filtered_df_display.sort_values(by="Description", ascending=False)
+
+        filtered_df_display['Date'] = filtered_df_display['Date'].dt.date
         filtered_df_display['Delete'] = False
-    if select_all_lock:
-        filtered_df_display['Locked'] = True
-    if clear_all_lock:
-        filtered_df_display['Locked'] = False
-    if select_all_rule:
-        filtered_df_display['Create Rule'] = True
-    if clear_all_rule:
         filtered_df_display['Create Rule'] = False
-    if select_all_amt:
-        filtered_df_display['Include Amt'] = True
-    if clear_all_amt:
         filtered_df_display['Include Amt'] = False
-    
-    # Column order
-    display_cols = [
-        'id',
-        'Delete',
-        'Locked',
-        'Date',
-        'Name',
-        'Amount',
-        'Category',
-        'SubCategory',
-        'Person',
-        'Description',
-        'Source',
-        'Create Rule',
-        'Include Amt'
-    ]
-    filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
-    
-    edited_df = st.data_editor(
-        filtered_df_display,
-        column_config={
+        filtered_df_display['Locked'] = filtered_df_display['Locked'].fillna(False).astype(bool)
+        if 'Name' not in filtered_df_display.columns:
+            filtered_df_display['Name'] = ''
+
+        if select_all_delete:
+            filtered_df_display['Delete'] = True
+        if clear_all_delete:
+            filtered_df_display['Delete'] = False
+        if select_all_lock:
+            filtered_df_display['Locked'] = True
+        if clear_all_lock:
+            filtered_df_display['Locked'] = False
+        if select_all_rule:
+            filtered_df_display['Create Rule'] = True
+        if clear_all_rule:
+            filtered_df_display['Create Rule'] = False
+        if select_all_amt:
+            filtered_df_display['Include Amt'] = True
+        if clear_all_amt:
+            filtered_df_display['Include Amt'] = False
+
+        display_cols = ['id', 'Delete', 'Locked', 'Date', 'Name', 'Amount', 'Category', 'SubCategory', 'Person', 'Description', 'Source', 'Create Rule', 'Include Amt']
+        filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
+
+        edited_df = st.data_editor(filtered_df_display, column_config={
             "id": None,
-            "Delete": st.column_config.CheckboxColumn("🗑️", width="small", help="Select to delete this transaction"),
+            "Delete": st.column_config.CheckboxColumn("🗑️", width="small"),
             "Locked": st.column_config.CheckboxColumn("🔒", width="small"),
-            "Create Rule": st.column_config.CheckboxColumn("➕", width="small", help="Create a rule from this transaction"),
-            "Include Amt": st.column_config.CheckboxColumn("💲", width="small", help="Include exact amount in the rule"),
-            "Name": st.column_config.TextColumn("Name", help="Friendly name for this transaction"),
+            "Create Rule": st.column_config.CheckboxColumn("➕", width="small"),
+            "Include Amt": st.column_config.CheckboxColumn("💲", width="small"),
+            "Name": st.column_config.TextColumn("Name"),
             "Category": st.column_config.SelectboxColumn("Category", options=available_cats, required=True),
-            "SubCategory": st.column_config.SelectboxColumn("Sub-Category", options=available_subcats, required=False),
+            "SubCategory": st.column_config.SelectboxColumn("Sub-Category", options=available_subcats),
             "Person": st.column_config.SelectboxColumn("Person", options=available_people, required=True),
             "Source": st.column_config.TextColumn("Source", disabled=True),
             "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
             "Date": st.column_config.DateColumn("Date")
-        },
-        hide_index=True, 
-        use_container_width=True, 
-        num_rows="fixed",
-        height=500
-    )
-    
-    # Count selected for deletion
-    rows_to_delete = edited_df[edited_df['Delete'] == True] if 'Delete' in edited_df.columns else pd.DataFrame()
-    delete_count = len(rows_to_delete)
-    
-    # Action buttons row
-    st.markdown("---")
-    col_action1, col_action2, col_action3 = st.columns([2, 1, 1])
-    
-    save_clicked = col_action1.button("💾 Save Changes & Create Rules", type="primary", use_container_width=True)
-    
-    if delete_count > 0:
-        delete_label = f"🗑️ Delete Selected ({delete_count})"
-        delete_clicked = col_action2.button(delete_label, type="secondary", use_container_width=True)
-    else:
-        delete_clicked = False
-        col_action2.button("🗑️ Delete Selected (0)", disabled=True, use_container_width=True)
-    
-    # Handle Delete Selected - SAVE TO SESSION STATE before confirmation
-    if delete_clicked and delete_count > 0:
-        st.session_state['rows_to_delete'] = rows_to_delete.copy()
-        st.session_state['confirm_delete_selected'] = True
-        st.rerun()
-    
-    # Show confirmation dialog using saved data from session state
-    if st.session_state.get('confirm_delete_selected', False):
-        saved_rows = st.session_state.get('rows_to_delete', pd.DataFrame())
-        saved_count = len(saved_rows) if not saved_rows.empty else 0
+        }, hide_index=True, use_container_width=True, num_rows="fixed", height=500)
+
+        rows_to_delete = edited_df[edited_df['Delete'] == True] if 'Delete' in edited_df.columns else pd.DataFrame()
+        delete_count = len(rows_to_delete)
+
+        st.markdown("---")
+        col_action1, col_action2, col_action3 = st.columns([2, 1, 1])
+        save_clicked = col_action1.button("💾 Save Changes & Create Rules", type="primary", use_container_width=True)
         
-        if saved_count > 0:
-            st.warning(f"⚠️ Are you sure you want to delete **{saved_count}** selected transactions? They will be moved to the Recycle Bin.")
-            col_confirm1, col_confirm2, col_confirm3 = st.columns([1, 1, 2])
+        if delete_count > 0:
+            delete_clicked = col_action2.button(f"🗑️ Delete Selected ({delete_count})", type="secondary", use_container_width=True)
+        else:
+            delete_clicked = False
+            col_action2.button("🗑️ Delete Selected (0)", disabled=True, use_container_width=True)
+
+        # Handle delete with session state persistence
+        if delete_clicked and delete_count > 0:
+            st.session_state['rows_to_delete'] = rows_to_delete.copy()
+            st.session_state['confirm_delete_selected'] = True
+            st.rerun()
+
+        if st.session_state.get('confirm_delete_selected', False):
+            saved_rows = st.session_state.get('rows_to_delete', pd.DataFrame())
+            saved_count = len(saved_rows) if not isinstance(saved_rows, type(None)) and not saved_rows.empty else 0
             
-            if col_confirm1.button("✅ Yes, Delete", key="confirm_del_yes", type="primary", use_container_width=True):
-                ids_to_delete = saved_rows['id'].dropna().tolist()
-                if ids_to_delete:
-                    move_to_trash(saved_rows)
-                    delete_expenses(ids_to_delete)
-                    
+            if saved_count > 0:
+                st.warning(f"⚠️ Delete **{saved_count}** transactions? They will be moved to Recycle Bin.")
+                col_confirm1, col_confirm2, col_confirm3 = st.columns([1, 1, 2])
+                if col_confirm1.button("✅ Yes, Delete", key="confirm_del_yes", type="primary", use_container_width=True):
+                    ids_to_delete = saved_rows['id'].dropna().tolist()
+                    if ids_to_delete:
+                        move_to_trash(saved_rows)
+                        delete_expenses(ids_to_delete)
+                        st.session_state['confirm_delete_selected'] = False
+                        st.session_state['rows_to_delete'] = None
+                        st.success(f"🗑️ Moved {len(ids_to_delete)} items to Recycle Bin!")
+                        st.rerun()
+                if col_confirm2.button("❌ Cancel", key="confirm_del_no", use_container_width=True):
                     st.session_state['confirm_delete_selected'] = False
                     st.session_state['rows_to_delete'] = None
-                    st.success(f"🗑️ Moved {len(ids_to_delete)} items to Recycle Bin!")
                     st.rerun()
-            
-            if col_confirm2.button("❌ Cancel", key="confirm_del_no", use_container_width=True):
+            else:
                 st.session_state['confirm_delete_selected'] = False
-                st.session_state['rows_to_delete'] = None
-                st.rerun()
-        else:
-            st.session_state['confirm_delete_selected'] = False
-    
-    # Handle Save Changes
-    if save_clicked:
-        rules_created = 0
-        new_cats_added = False
-        new_subs_added = False
-        
-        for idx, row in edited_df.iterrows():
-            if row.get('Delete', False):
-                continue
-                
-            if row.get('Create Rule', False):
-                desc_text = str(row['Description']).lower().strip()
-                name = row.get('Name', '')
-                cat = row['Category']
-                sub = row.get('SubCategory', '')
-                person = row.get('Person', 'Family')
-                
-                rule_amount = row['Amount'] if row.get('Include Amt', False) else None
-                
-                new_rule = pd.DataFrame([{
-                    "Keyword": desc_text, 
-                    "Name": name,
-                    "Category": cat, 
-                    "SubCategory": sub, 
-                    "Person": person,
-                    "Amount": rule_amount
-                }])
-                add_rules(new_rule)
-                rules_created += 1
-                
-                if cat not in st.session_state['categories']:
-                    st.session_state['categories'].append(cat)
-                    st.session_state['categories'].sort()
-                    new_cats_added = True
-                
-                if sub and sub not in st.session_state['subcategories']:
-                    st.session_state['subcategories'].append(sub)
-                    st.session_state['subcategories'].sort()
-                    new_subs_added = True
-                
-                edited_df.at[idx, 'Create Rule'] = False
-                edited_df.at[idx, 'Include Amt'] = False
-                edited_df.at[idx, 'Locked'] = True
 
-        if rules_created > 0:
-            if new_cats_added: 
-                save_list("categories", st.session_state['categories'])
-            if new_subs_added: 
-                save_list("subcategories", st.session_state['subcategories'])
-            st.toast(f"✅ Created {rules_created} new rules!", icon="🧠")
+        if save_clicked:
+            rules_created = 0
+            new_cats_added = False
+            new_subs_added = False
+            
+            for idx, row in edited_df.iterrows():
+                if row.get('Delete', False):
+                    continue
+                if row.get('Create Rule', False):
+                    desc_text = str(row['Description']).lower().strip()
+                    name = row.get('Name', '')
+                    cat = row['Category']
+                    sub = row.get('SubCategory', '')
+                    person = row.get('Person', 'Family')
+                    rule_amount = row['Amount'] if row.get('Include Amt', False) else None
+                    new_rule = pd.DataFrame([{"Keyword": desc_text, "Name": name, "Category": cat, "SubCategory": sub, "Person": person, "Amount": rule_amount}])
+                    add_rules(new_rule)
+                    rules_created += 1
+                    if cat not in st.session_state['categories']:
+                        st.session_state['categories'].append(cat)
+                        st.session_state['categories'].sort()
+                        new_cats_added = True
+                    if sub and sub not in st.session_state['subcategories']:
+                        st.session_state['subcategories'].append(sub)
+                        st.session_state['subcategories'].sort()
+                        new_subs_added = True
+                    edited_df.at[idx, 'Create Rule'] = False
+                    edited_df.at[idx, 'Include Amt'] = False
+                    edited_df.at[idx, 'Locked'] = True
 
-        save_df = edited_df[edited_df['Delete'] == False].drop(columns=['Delete', 'Create Rule', 'Include Amt'], errors='ignore')
-        
-        existing_rows = save_df[save_df['id'].notna()].copy()
-        new_rows = save_df[save_df['id'].isna()].copy()
-        
-        if not existing_rows.empty:
-            upsert_expenses(existing_rows)
-        
-        if not new_rows.empty:
-            insert_expenses(new_rows)
-        
-        st.success("✅ Changes Saved!")
-        st.rerun()
+            if rules_created > 0:
+                if new_cats_added:
+                    save_list("categories", st.session_state['categories'])
+                if new_subs_added:
+                    save_list("subcategories", st.session_state['subcategories'])
+                st.toast(f"✅ Created {rules_created} new rules!", icon="🧠")
+
+            save_df = edited_df[edited_df['Delete'] == False].drop(columns=['Delete', 'Create Rule', 'Include Amt'], errors='ignore')
+            existing_rows = save_df[save_df['id'].notna()].copy()
+            new_rows = save_df[save_df['id'].isna()].copy()
+            
+            if not existing_rows.empty:
+                upsert_expenses(existing_rows)
+            if not new_rows.empty:
+                insert_expenses(new_rows)
+            
+            st.success("✅ Changes Saved!")
+            st.rerun()
 
 else:
     st.info("👋 Upload a file or Paste Text in the sidebar to begin!")
