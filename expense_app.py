@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from supabase import create_client
+from streamlit_cookies_controller import CookieController
 import io
 import datetime
 
@@ -24,33 +25,83 @@ DEFAULT_RULES = {
     "taobao": {"name": "Taobao Purchase", "category": "Shopping", "subcategory": "Online Shopping", "person": "Family"}
 }
 
+# Cookie settings
+COOKIE_NAME = "expense_tracker_auth"
+COOKIE_EXPIRY_DAYS = 30
+
 st.set_page_config(page_title="Cloud Expense Tracker", layout="wide", page_icon="💳")
 
+# Initialize cookie controller
+controller = CookieController()
+
 # ============================================
-# 1. AUTHENTICATION
+# 1. AUTHENTICATION WITH COOKIES
 # ============================================
 def check_password():
+    """Handle login with cookie support for remember me."""
+    
+    # Try to get saved cookie
+    try:
+        saved_cookie = controller.get(COOKIE_NAME)
+    except:
+        saved_cookie = None
+    
+    # If cookie exists, try to auto-login
+    if saved_cookie and "password_correct" not in st.session_state:
+        try:
+            saved_user, saved_pass = saved_cookie.split(":", 1)
+            if "users" in st.secrets and saved_user in st.secrets["users"]:
+                if st.secrets["users"][saved_user] == saved_pass:
+                    st.session_state["password_correct"] = True
+                    st.session_state["current_user"] = saved_user
+                    return True
+        except:
+            try:
+                controller.remove(COOKIE_NAME)
+            except:
+                pass
+    
     def password_entered():
         user = st.session_state["username"].strip()
         password = st.session_state["password"].strip()
+        remember = st.session_state.get("remember_me", False)
         
         if "users" in st.secrets and user in st.secrets["users"] and st.secrets["users"][user] == password:
             st.session_state["password_correct"] = True
             st.session_state["current_user"] = user
-            del st.session_state["password"]
-            del st.session_state["username"]
+            
+            # Save cookie if "Remember Me" is checked
+            if remember:
+                try:
+                    controller.set(
+                        COOKIE_NAME, 
+                        f"{user}:{password}",
+                        max_age=COOKIE_EXPIRY_DAYS * 24 * 60 * 60
+                    )
+                except:
+                    pass
+            
+            # Clean up login fields
+            if "password" in st.session_state:
+                del st.session_state["password"]
+            if "username" in st.session_state:
+                del st.session_state["username"]
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
         st.title("🔒 Login")
         st.text_input("Username", key="username")
-        st.text_input("Password", type="password", key="password", on_change=password_entered)
+        st.text_input("Password", type="password", key="password")
+        st.checkbox("Remember me for 30 days", key="remember_me")
+        st.button("Login", on_click=password_entered)
         return False
     elif not st.session_state["password_correct"]:
         st.title("🔒 Login")
         st.text_input("Username", key="username")
-        st.text_input("Password", type="password", key="password", on_change=password_entered)
+        st.text_input("Password", type="password", key="password")
+        st.checkbox("Remember me for 30 days", key="remember_me")
+        st.button("Login", on_click=password_entered)
         st.error("😕 User not found or password incorrect.")
         return False
     else:
@@ -66,12 +117,10 @@ def check_license():
     """Check if user has valid account number and license hasn't expired."""
     user = st.session_state["current_user"]
     
-    # Get license info from secrets
     if "licenses" not in st.secrets:
         st.error("⚠️ No license configuration found. Contact admin.")
         return False
     
-    # Check account number exists
     account_key = f"{user}_account"
     expiry_key = f"{user}_expiry"
     
@@ -81,14 +130,12 @@ def check_license():
     
     user_account = st.secrets["licenses"][account_key]
     
-    # Check expiry date exists
     if expiry_key not in st.secrets["licenses"]:
         st.error(f"⚠️ No expiry date configured for user '{user}'. Contact admin.")
         return False
     
     expiry_str = st.secrets["licenses"][expiry_key]
     
-    # Parse expiry date
     try:
         expiry_date = datetime.datetime.strptime(expiry_str, "%Y-%m-%d").date()
     except ValueError:
@@ -97,7 +144,6 @@ def check_license():
     
     today = datetime.date.today()
     
-    # Check if expired
     if today > expiry_date:
         st.title("🔒 License Expired")
         st.error(f"""
@@ -109,14 +155,12 @@ def check_license():
         """)
         return False
     
-    # Warning if expiring soon
     days_left = (expiry_date - today).days
     if days_left <= 7:
         st.error(f"🚨 Your license expires in **{days_left} days**! Renew immediately to avoid interruption.")
     elif days_left <= 30:
         st.warning(f"⏰ Your license expires in **{days_left} days** ({expiry_date.strftime('%b %d, %Y')}). Please renew soon!")
     
-    # Store license info in session
     st.session_state["user_account"] = user_account
     st.session_state["license_expiry"] = expiry_date
     
@@ -436,11 +480,9 @@ if not df_history.empty:
     col_ppl1, col_ppl2 = st.sidebar.columns(2)
     if col_ppl1.button("✅ All", key="btn_all_ppl", use_container_width=True):
         st.session_state['ppl_selection'] = available_people
-        st.session_state['ppl_filter'] = available_people # FORCE UPDATE WIDGET KEY
         st.rerun()
     if col_ppl2.button("🗑️ Clear", key="btn_clr_ppl", use_container_width=True):
         st.session_state['ppl_selection'] = []
-        st.session_state['ppl_filter'] = [] # FORCE UPDATE WIDGET KEY
         st.rerun()
     selected_people = st.sidebar.multiselect(
         "People",
@@ -456,11 +498,9 @@ if not df_history.empty:
     col_cat1, col_cat2 = st.sidebar.columns(2)
     if col_cat1.button("✅ All", key="btn_all_cat", use_container_width=True):
         st.session_state['cat_selection'] = available_cats
-        st.session_state['cat_filter'] = available_cats # FORCE UPDATE WIDGET KEY
         st.rerun()
     if col_cat2.button("🗑️ Clear", key="btn_clr_cat", use_container_width=True):
         st.session_state['cat_selection'] = []
-        st.session_state['cat_filter'] = [] # FORCE UPDATE WIDGET KEY
         st.rerun()
     selected_categories = st.sidebar.multiselect(
         "Categories",
@@ -476,11 +516,9 @@ if not df_history.empty:
     col_sub1, col_sub2 = st.sidebar.columns(2)
     if col_sub1.button("✅ All", key="btn_all_sub", use_container_width=True):
         st.session_state['sub_selection'] = available_subcats
-        st.session_state['sub_filter'] = available_subcats # FORCE UPDATE WIDGET KEY
         st.rerun()
     if col_sub2.button("🗑️ Clear", key="btn_clr_sub", use_container_width=True):
         st.session_state['sub_selection'] = []
-        st.session_state['sub_filter'] = [] # FORCE UPDATE WIDGET KEY
         st.rerun()
     selected_subcats = st.sidebar.multiselect(
         "Sub-Categories",
@@ -496,11 +534,9 @@ if not df_history.empty:
     col_src1, col_src2 = st.sidebar.columns(2)
     if col_src1.button("✅ All", key="btn_all_src", use_container_width=True):
         st.session_state['src_selection'] = all_sources_list
-        st.session_state['src_filter'] = all_sources_list # FORCE UPDATE WIDGET KEY
         st.rerun()
     if col_src2.button("🗑️ Clear", key="btn_clr_src", use_container_width=True):
         st.session_state['src_selection'] = []
-        st.session_state['src_filter'] = [] # FORCE UPDATE WIDGET KEY
         st.rerun()
     selected_sources = st.sidebar.multiselect(
         "Source",
@@ -795,7 +831,15 @@ st.sidebar.success("✅ Connected to Supabase")
 st.sidebar.caption(f"Project: ...{sb_url[-25:]}")
 
 st.sidebar.markdown("---")
+
+# === LOGOUT (with cookie clearing) ===
 if st.sidebar.button("🚪 Logout"):
+    # Clear the auth cookie
+    try:
+        controller.remove(COOKIE_NAME)
+    except:
+        pass
+    # Clear session state
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
@@ -920,18 +964,17 @@ if not df_history.empty and start_date and end_date:
             "Native (Click Headers to Sort)"
         ]
     )
-    
 
-    # Row 2: Select All buttons for checkboxes
+    # Row 2: Bulk Select buttons for checkboxes
     st.markdown("**Bulk Select (applies to table below):**")
     col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6 = st.columns(6)
 
     select_all_lock = col_sel1.button("Lock All 🔒", key="sel_all_lock", use_container_width=True, help="Lock all entries shown")
-    clear_all_lock = col_sel2.button("Unlock All 🔒", key="clr_all_lock", use_container_width=True, help="Unlock all entries shown")
+    clear_all_lock = col_sel2.button("Unlock All 🔓", key="clr_all_lock", use_container_width=True, help="Unlock all entries shown")
     select_all_rule = col_sel3.button("Select All ➕", key="sel_all_rule", use_container_width=True, help="Check all Create Rule boxes")
-    clear_all_rule = col_sel4.button("Unselect All ➕", key="clr_all_rule", use_container_width=True, help="Uncheck all Create Rule boxes")
+    clear_all_rule = col_sel4.button("Clear All ➕", key="clr_all_rule", use_container_width=True, help="Uncheck all Create Rule boxes")
     select_all_amt = col_sel5.button("Select All 💲", key="sel_all_amt", use_container_width=True, help="Check all Include Amt boxes")
-    clear_all_amt = col_sel6.button("Unselect All 💲", key="clr_all_amt", use_container_width=True, help="Uncheck all Include Amt boxes")
+    clear_all_amt = col_sel6.button("Clear All 💲", key="clr_all_amt", use_container_width=True, help="Uncheck all Include Amt boxes")
 
     if not filtered_df.empty:
         filtered_df_display = filtered_df.copy()
@@ -990,8 +1033,8 @@ if not df_history.empty and start_date and end_date:
             'Person',
             'Description',
             'Source',
-            'Include Amt',
             'Create Rule',
+            'Include Amt'
         ]
         filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
         
