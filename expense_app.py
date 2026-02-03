@@ -40,13 +40,11 @@ controller = CookieController()
 def check_password():
     """Handle login with cookie support for remember me."""
     
-    # Try to get saved cookie
     try:
         saved_cookie = controller.get(COOKIE_NAME)
     except:
         saved_cookie = None
     
-    # If cookie exists, try to auto-login
     if saved_cookie and "password_correct" not in st.session_state:
         try:
             saved_user, saved_pass = saved_cookie.split(":", 1)
@@ -70,7 +68,6 @@ def check_password():
             st.session_state["password_correct"] = True
             st.session_state["current_user"] = user
             
-            # Save cookie if "Remember Me" is checked
             if remember:
                 try:
                     controller.set(
@@ -81,7 +78,6 @@ def check_password():
                 except:
                     pass
             
-            # Clean up login fields
             if "password" in st.session_state:
                 del st.session_state["password"]
             if "username" in st.session_state:
@@ -270,6 +266,85 @@ def delete_expenses(ids):
     for id_val in ids:
         sb.table("expenses").delete().eq("id", int(id_val)).execute()
 
+# --- TRASH / RECYCLE BIN ---
+def move_to_trash(df):
+    """Move expenses to trash table."""
+    df_save = df.copy()
+    
+    # Rename columns to DB format
+    rename_map = {}
+    for col in df_save.columns:
+        if col in EXP_COLS_REV:
+            rename_map[col] = EXP_COLS_REV[col]
+    df_save = df_save.rename(columns=rename_map)
+    
+    # Add original_id
+    if 'id' in df_save.columns:
+        df_save['original_id'] = df_save['id']
+        df_save = df_save.drop(columns=['id'])
+    
+    # Remove UI-only columns
+    cols_to_remove = ['Delete', 'delete', 'Create Rule', 'create rule', 'Include Amt', 'include amt']
+    for col in cols_to_remove:
+        if col in df_save.columns:
+            df_save = df_save.drop(columns=[col])
+    
+    valid_cols = ['original_id', 'date', 'description', 'amount', 'name', 'category', 'subcategory', 'source', 'person', 'locked']
+    df_save = df_save[[c for c in df_save.columns if c.lower() in valid_cols]]
+    
+    records = prepare_records(df_save)
+    if records:
+        sb.table("deleted_expenses").insert(records).execute()
+
+def load_trash():
+    """Load all items from trash."""
+    try:
+        resp = sb.table("deleted_expenses").select("*").order("deleted_at", desc=True).execute()
+        if resp.data:
+            df = pd.DataFrame(resp.data)
+            col_mapping = {
+                'date': 'Date', 'description': 'Description', 'amount': 'Amount',
+                'name': 'Name', 'category': 'Category', 'subcategory': 'SubCategory',
+                'source': 'Source', 'person': 'Person', 'locked': 'Locked',
+                'deleted_at': 'Deleted At', 'original_id': 'Original ID'
+            }
+            df = df.rename(columns=col_mapping)
+            return df
+        return pd.DataFrame()
+    except:
+        return pd.DataFrame()
+
+def restore_from_trash(ids):
+    """Restore items from trash back to expenses."""
+    restored_count = 0
+    for trash_id in ids:
+        try:
+            resp = sb.table("deleted_expenses").select("*").eq("id", int(trash_id)).execute()
+            if resp.data:
+                item = resp.data[0]
+                restore_item = {k: v for k, v in item.items() if k not in ['id', 'original_id', 'deleted_at']}
+                sb.table("expenses").insert(restore_item).execute()
+                sb.table("deleted_expenses").delete().eq("id", int(trash_id)).execute()
+                restored_count += 1
+        except Exception as e:
+            st.error(f"Error restoring item {trash_id}: {e}")
+    return restored_count
+
+def empty_trash():
+    """Permanently delete all items from trash."""
+    try:
+        sb.table("deleted_expenses").delete().gte("id", 0).execute()
+    except Exception as e:
+        st.error(f"Error emptying trash: {e}")
+
+def delete_from_trash(ids):
+    """Permanently delete specific items from trash."""
+    for trash_id in ids:
+        try:
+            sb.table("deleted_expenses").delete().eq("id", int(trash_id)).execute()
+        except:
+            pass
+
 # --- REFERENCE LISTS (categories, subcategories, people) ---
 def load_list(table_name):
     try:
@@ -448,11 +523,9 @@ if not df_history.empty:
     max_date_avail = df_history['Date'].max().date()
     start_date, end_date = st.sidebar.date_input("Period", [min_date_avail, max_date_avail])
     
-    # Search with toggle for Name/Description/Both
     search_field = st.sidebar.radio("Search in:", ["Name", "Description", "Both"], horizontal=True, index=2)
     search_term = st.sidebar.text_input("Search", placeholder="e.g. Starbucks, Uber")
 
-    # Build available options from data + saved settings
     data_people = df_history['Person'].dropna().unique().tolist()
     available_people = sorted(list(set(st.session_state['people'] + data_people)))
     
@@ -465,7 +538,6 @@ if not df_history.empty:
     
     all_sources_list = sorted(df_history['Source'].dropna().unique().tolist())
 
-    # --- Initialize session state for filters (first load defaults) ---
     if 'ppl_selection' not in st.session_state:
         st.session_state['ppl_selection'] = available_people
     if 'cat_selection' not in st.session_state:
@@ -696,6 +768,71 @@ with st.sidebar.expander("🧠 Teach the App", expanded=False):
             st.success(f"✅ Rules Re-Applied to {len(changed_ids)} transactions!")
             st.rerun()
 
+# === RECYCLE BIN ===
+with st.sidebar.expander("🗑️ Recycle Bin", expanded=False):
+    trash_df = load_trash()
+    
+    if not trash_df.empty:
+        trash_count = len(trash_df)
+        st.warning(f"**{trash_count} items in trash**")
+        
+        trash_display = trash_df.copy()
+        if 'Date' in trash_display.columns:
+            trash_display['Date'] = pd.to_datetime(trash_display['Date'], errors='coerce').dt.date
+        if 'Deleted At' in trash_display.columns:
+            trash_display['Deleted At'] = pd.to_datetime(trash_display['Deleted At'], errors='coerce').dt.strftime('%b %d, %H:%M')
+        
+        trash_display['Restore'] = False
+        
+        display_trash_cols = ['id', 'Restore', 'Date', 'Name', 'Description', 'Amount', 'Category', 'Deleted At']
+        trash_display = trash_display[[c for c in display_trash_cols if c in trash_display.columns]]
+        
+        edited_trash = st.data_editor(
+            trash_display,
+            column_config={
+                "id": None,
+                "Restore": st.column_config.CheckboxColumn("✅", width="small", help="Select to restore"),
+                "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+                "Date": st.column_config.DateColumn("Date"),
+                "Deleted At": st.column_config.TextColumn("Deleted")
+            },
+            hide_index=True,
+            use_container_width=True,
+            height=200,
+            key="trash_editor"
+        )
+        
+        selected_restore = edited_trash[edited_trash['Restore'] == True] if 'Restore' in edited_trash.columns else pd.DataFrame()
+        restore_count = len(selected_restore)
+        
+        col_trash1, col_trash2 = st.columns(2)
+        
+        if restore_count > 0:
+            if col_trash1.button(f"♻️ Restore ({restore_count})", use_container_width=True, key="btn_restore"):
+                ids_to_restore = selected_restore['id'].dropna().tolist()
+                restored = restore_from_trash(ids_to_restore)
+                st.success(f"✅ Restored {restored} items!")
+                st.rerun()
+        else:
+            col_trash1.button("♻️ Restore (0)", disabled=True, use_container_width=True, key="btn_restore_disabled")
+        
+        if col_trash2.button("🗑️ Empty Trash", use_container_width=True, key="btn_empty"):
+            st.session_state['confirm_empty_trash'] = True
+        
+        if st.session_state.get('confirm_empty_trash', False):
+            st.error(f"⚠️ Permanently delete all {trash_count} items? This cannot be undone!")
+            col_c1, col_c2 = st.columns(2)
+            if col_c1.button("✅ Yes, Empty", key="confirm_empty_yes"):
+                empty_trash()
+                st.session_state['confirm_empty_trash'] = False
+                st.success("🗑️ Trash emptied!")
+                st.rerun()
+            if col_c2.button("❌ Cancel", key="confirm_empty_no"):
+                st.session_state['confirm_empty_trash'] = False
+                st.rerun()
+    else:
+        st.info("🗑️ Trash is empty")
+
 st.sidebar.markdown("---")
 
 # === IMPORT DATA (with Manual Source) ===
@@ -834,12 +971,10 @@ st.sidebar.markdown("---")
 
 # === LOGOUT (with cookie clearing) ===
 if st.sidebar.button("🚪 Logout"):
-    # Clear the auth cookie
     try:
         controller.remove(COOKIE_NAME)
     except:
         pass
-    # Clear session state
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
@@ -967,14 +1102,16 @@ if not df_history.empty and start_date and end_date:
 
     # Row 2: Bulk Select buttons for checkboxes
     st.markdown("**Bulk Select (applies to table below):**")
-    col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6 = st.columns(6)
+    col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6, col_sel7, col_sel8 = st.columns(8)
 
-    select_all_lock = col_sel1.button("Lock All 🔒", key="sel_all_lock", use_container_width=True, help="Lock all entries shown")
-    clear_all_lock = col_sel2.button("Unlock All 🔓", key="clr_all_lock", use_container_width=True, help="Unlock all entries shown")
-    select_all_rule = col_sel3.button("Select All ➕", key="sel_all_rule", use_container_width=True, help="Check all Create Rule boxes")
-    clear_all_rule = col_sel4.button("Clear All ➕", key="clr_all_rule", use_container_width=True, help="Uncheck all Create Rule boxes")
-    select_all_amt = col_sel5.button("Select All 💲", key="sel_all_amt", use_container_width=True, help="Check all Include Amt boxes")
-    clear_all_amt = col_sel6.button("Clear All 💲", key="clr_all_amt", use_container_width=True, help="Uncheck all Include Amt boxes")
+    select_all_delete = col_sel1.button("Select 🗑️", key="sel_all_del", use_container_width=True, help="Select all for deletion")
+    clear_all_delete = col_sel2.button("Clear 🗑️", key="clr_all_del", use_container_width=True, help="Unselect all for deletion")
+    select_all_lock = col_sel3.button("Lock 🔒", key="sel_all_lock", use_container_width=True, help="Lock all entries shown")
+    clear_all_lock = col_sel4.button("Unlock 🔓", key="clr_all_lock", use_container_width=True, help="Unlock all entries shown")
+    select_all_rule = col_sel5.button("Select ➕", key="sel_all_rule", use_container_width=True, help="Check all Create Rule boxes")
+    clear_all_rule = col_sel6.button("Clear ➕", key="clr_all_rule", use_container_width=True, help="Uncheck all Create Rule boxes")
+    select_all_amt = col_sel7.button("Select 💲", key="sel_all_amt", use_container_width=True, help="Check all Include Amt boxes")
+    clear_all_amt = col_sel8.button("Clear 💲", key="clr_all_amt", use_container_width=True, help="Uncheck all Include Amt boxes")
 
     if not filtered_df.empty:
         filtered_df_display = filtered_df.copy()
@@ -999,7 +1136,8 @@ if not df_history.empty and start_date and end_date:
 
         filtered_df_display['Date'] = filtered_df_display['Date'].dt.date
         
-        # Add UI-only columns for rule creation
+        # Add UI-only columns
+        filtered_df_display['Delete'] = False
         filtered_df_display['Create Rule'] = False
         filtered_df_display['Include Amt'] = False
         filtered_df_display['Locked'] = filtered_df_display['Locked'].fillna(False).astype(bool)
@@ -1008,6 +1146,10 @@ if not df_history.empty and start_date and end_date:
             filtered_df_display['Name'] = ''
         
         # Apply bulk select buttons
+        if select_all_delete:
+            filtered_df_display['Delete'] = True
+        if clear_all_delete:
+            filtered_df_display['Delete'] = False
         if select_all_lock:
             filtered_df_display['Locked'] = True
         if clear_all_lock:
@@ -1024,6 +1166,7 @@ if not df_history.empty and start_date and end_date:
         # Column order
         display_cols = [
             'id',
+            'Delete',
             'Locked',
             'Date',
             'Name',
@@ -1042,6 +1185,7 @@ if not df_history.empty and start_date and end_date:
             filtered_df_display,
             column_config={
                 "id": None,
+                "Delete": st.column_config.CheckboxColumn("🗑️", width="small", help="Select to delete this transaction"),
                 "Locked": st.column_config.CheckboxColumn("🔒", width="small"),
                 "Create Rule": st.column_config.CheckboxColumn("➕", width="small", help="Create a rule from this transaction"),
                 "Include Amt": st.column_config.CheckboxColumn("💲", width="small", help="Include exact amount in the rule"),
@@ -1055,26 +1199,60 @@ if not df_history.empty and start_date and end_date:
             },
             hide_index=True, 
             use_container_width=True, 
-            num_rows="dynamic", 
+            num_rows="fixed",
             height=500
         )
         
-        if st.button("💾 Save Changes & Create Rules", type="primary", use_container_width=True):
-            # 1. HANDLE DELETIONS
-            original_ids = set(filtered_df_display['id'].dropna().tolist())
-            remaining_ids = set(edited_df['id'].dropna().tolist()) if 'id' in edited_df.columns else set()
-            deleted_ids = original_ids - remaining_ids
+        # Count selected for deletion
+        rows_to_delete = edited_df[edited_df['Delete'] == True] if 'Delete' in edited_df.columns else pd.DataFrame()
+        delete_count = len(rows_to_delete)
+        
+        # Action buttons row
+        st.markdown("---")
+        col_action1, col_action2, col_action3 = st.columns([2, 1, 1])
+        
+        save_clicked = col_action1.button("💾 Save Changes & Create Rules", type="primary", use_container_width=True)
+        
+        if delete_count > 0:
+            delete_label = f"🗑️ Delete Selected ({delete_count})"
+            delete_clicked = col_action2.button(delete_label, type="secondary", use_container_width=True)
+        else:
+            delete_clicked = False
+            col_action2.button("🗑️ Delete Selected (0)", disabled=True, use_container_width=True)
+        
+        # Handle Delete Selected with confirmation
+        if delete_clicked:
+            st.session_state['confirm_delete_selected'] = True
+        
+        if st.session_state.get('confirm_delete_selected', False) and delete_count > 0:
+            st.warning(f"⚠️ Are you sure you want to delete **{delete_count}** selected transactions? They will be moved to the Recycle Bin.")
+            col_confirm1, col_confirm2, col_confirm3 = st.columns([1, 1, 2])
             
-            if deleted_ids:
-                delete_expenses(list(deleted_ids))
-                st.toast(f"🗑️ Deleted {len(deleted_ids)} transactions")
-
-            # 2. HANDLE RULES
+            if col_confirm1.button("✅ Yes, Delete", key="confirm_del_yes", type="primary", use_container_width=True):
+                ids_to_delete = rows_to_delete['id'].dropna().tolist()
+                if ids_to_delete:
+                    # Move to trash instead of permanent delete
+                    move_to_trash(rows_to_delete)
+                    delete_expenses(ids_to_delete)
+                    
+                    st.session_state['confirm_delete_selected'] = False
+                    st.success(f"🗑️ Moved {len(ids_to_delete)} items to Recycle Bin!")
+                    st.rerun()
+            
+            if col_confirm2.button("❌ Cancel", key="confirm_del_no", use_container_width=True):
+                st.session_state['confirm_delete_selected'] = False
+                st.rerun()
+        
+        # Handle Save Changes
+        if save_clicked:
             rules_created = 0
             new_cats_added = False
             new_subs_added = False
             
             for idx, row in edited_df.iterrows():
+                if row.get('Delete', False):
+                    continue
+                    
                 if row.get('Create Rule', False):
                     desc_text = str(row['Description']).lower().strip()
                     name = row.get('Name', '')
@@ -1116,8 +1294,7 @@ if not df_history.empty and start_date and end_date:
                     save_list("subcategories", st.session_state['subcategories'])
                 st.toast(f"✅ Created {rules_created} new rules!", icon="🧠")
 
-            # 3. SAVE DATA UPDATES
-            save_df = edited_df.drop(columns=['Create Rule', 'Include Amt'], errors='ignore')
+            save_df = edited_df[edited_df['Delete'] == False].drop(columns=['Delete', 'Create Rule', 'Include Amt'], errors='ignore')
             
             existing_rows = save_df[save_df['id'].notna()].copy()
             new_rows = save_df[save_df['id'].isna()].copy()
