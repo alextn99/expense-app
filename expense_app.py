@@ -956,7 +956,7 @@ if not df_history.empty and start_date and end_date:
         st.rerun()
         
         if not filtered_df.empty:
-        filtered_df_display = filtered_df.copy()
+            filtered_df_display = filtered_df.copy()
         
         if sort_option == "Date (Newest)":
             filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=False)
