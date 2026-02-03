@@ -914,25 +914,25 @@ if not df_history.empty and start_date and end_date:
     col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6, col_sel7, col_sel8 = st.columns(8)
 
     # Clear cached editor state when any bulk button is clicked
-    if col_sel1.button("Select 🗑️", key="sel_all_del", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'select_delete'
-        st.rerun()
-    if col_sel2.button("Clear 🗑️", key="clr_all_del", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'clear_delete'
-        st.rerun()
-    if col_sel3.button("Lock 🔒", key="sel_all_lock", use_container_width=True):
+    if col_sel1.button("Lock 🔒", key="sel_all_lock", use_container_width=True):
         if 'transaction_editor' in st.session_state:
             del st.session_state['transaction_editor']
         st.session_state['bulk_action'] = 'select_lock'
         st.rerun()
-    if col_sel4.button("Unlock 🔓", key="clr_all_lock", use_container_width=True):
+    if col_sel2.button("Unlock 🔓", key="clr_all_lock", use_container_width=True):
         if 'transaction_editor' in st.session_state:
             del st.session_state['transaction_editor']
         st.session_state['bulk_action'] = 'clear_lock'
+        st.rerun()
+    if col_sel3.button("Select 💲", key="sel_all_amt", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'select_amt'
+        st.rerun()
+    if col_sel4.button("Clear 💲", key="clr_all_amt", use_container_width=True):
+        if 'transaction_editor' in st.session_state:
+            del st.session_state['transaction_editor']
+        st.session_state['bulk_action'] = 'clear_amt'
         st.rerun()
     if col_sel5.button("Select ➕", key="sel_all_rule", use_container_width=True):
         if 'transaction_editor' in st.session_state:
@@ -944,15 +944,15 @@ if not df_history.empty and start_date and end_date:
             del st.session_state['transaction_editor']
         st.session_state['bulk_action'] = 'clear_rule'
         st.rerun()
-    if col_sel7.button("Select 💲", key="sel_all_amt", use_container_width=True):
+    if col_sel7.button("Del All", key="sel_all_del", use_container_width=True):
         if 'transaction_editor' in st.session_state:
             del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'select_amt'
+        st.session_state['bulk_action'] = 'select_delete'
         st.rerun()
-    if col_sel8.button("Clear 💲", key="clr_all_amt", use_container_width=True):
+    if col_sel8.button("Clear Del", key="clr_all_del", use_container_width=True):
         if 'transaction_editor' in st.session_state:
             del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'clear_amt'
+        st.session_state['bulk_action'] = 'clear_delete'
         st.rerun()
 
     if not filtered_df.empty:
