@@ -1001,11 +1001,7 @@ if not df_history.empty and start_date and end_date:
             filtered_df_display['Include Amt'] = True
         elif bulk_action == 'clear_amt':
             filtered_df_display['Include Amt'] = False
-
-        # Clear the bulk action after applying
-        if bulk_action:
-            st.session_state['bulk_action'] = None
-
+            
         display_cols = ['id', 'Delete', 'Locked', 'Date', 'Name', 'Amount', 'Category', 'SubCategory', 'Person', 'Description', 'Source', 'Create Rule', 'Include Amt']
         filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
 
@@ -1059,8 +1055,12 @@ if not df_history.empty and start_date and end_date:
                         # CLEAR THE CACHED EDITOR STATE
                         if 'transaction_editor' in st.session_state:
                             del st.session_state['transaction_editor']
+                        # CLEAR BULK ACTION
+                        if 'bulk_action' in st.session_state:
+                            del st.session_state['bulk_action']
                         st.success(f"🗑️ Moved {len(ids_to_delete)} items to Recycle Bin!")
                         st.rerun()
+                        
                 if col_confirm2.button("❌ Cancel", key="confirm_del_no", use_container_width=True):
                     st.session_state['confirm_delete_selected'] = False
                     st.session_state['rows_to_delete'] = None
@@ -1117,6 +1117,10 @@ if not df_history.empty and start_date and end_date:
             # CLEAR THE CACHED EDITOR STATE
             if 'transaction_editor' in st.session_state:
                 del st.session_state['transaction_editor']
+
+            # CLEAR BULK ACTION AFTER SAVE
+            if 'bulk_action' in st.session_state:
+                del st.session_state['bulk_action']
             
             st.success("✅ Changes Saved!")
             st.rerun()
