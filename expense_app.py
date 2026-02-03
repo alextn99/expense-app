@@ -1006,7 +1006,7 @@ if not df_history.empty and start_date and end_date:
             'SubCategory',
             'Person',
             'Description',
-            'Source'
+            'Source',
             'Include Amt',
             'Create Rule',
         ]
