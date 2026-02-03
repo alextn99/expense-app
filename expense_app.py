@@ -1080,233 +1080,243 @@ if not df_history.empty and start_date and end_date:
         else:
             st.info("👈 Click a Category on the left to see details here.")
 
-    # --- TRANSACTION EDITOR ---
-    st.markdown("---")
-    st.subheader("📝 Transaction Editor")
+# --- TRANSACTION EDITOR ---
+st.markdown("---")
+st.subheader("📝 Transaction Editor")
+
+# Row 1: Sort dropdown
+sort_option = st.selectbox(
+    "Sort By:", 
+    [
+        "Date (Newest)",
+        "Date (Oldest)", 
+        "Amount (Lowest first - Big Spends)", 
+        "Amount (Highest first - Income)", 
+        "Name (A-Z)",
+        "Name (Z-A)",
+        "Description (A-Z)", 
+        "Description (Z-A)",
+        "Native (Click Headers to Sort)"
+    ]
+)
+
+# Row 2: Bulk Select buttons for checkboxes
+st.markdown("**Bulk Select (applies to table below):**")
+col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6, col_sel7, col_sel8 = st.columns(8)
+
+select_all_delete = col_sel1.button("Select 🗑️", key="sel_all_del", use_container_width=True, help="Select all for deletion")
+clear_all_delete = col_sel2.button("Clear 🗑️", key="clr_all_del", use_container_width=True, help="Unselect all for deletion")
+select_all_lock = col_sel3.button("Lock 🔒", key="sel_all_lock", use_container_width=True, help="Lock all entries shown")
+clear_all_lock = col_sel4.button("Unlock 🔓", key="clr_all_lock", use_container_width=True, help="Unlock all entries shown")
+select_all_rule = col_sel5.button("Select ➕", key="sel_all_rule", use_container_width=True, help="Check all Create Rule boxes")
+clear_all_rule = col_sel6.button("Clear ➕", key="clr_all_rule", use_container_width=True, help="Uncheck all Create Rule boxes")
+select_all_amt = col_sel7.button("Select 💲", key="sel_all_amt", use_container_width=True, help="Check all Include Amt boxes")
+clear_all_amt = col_sel8.button("Clear 💲", key="clr_all_amt", use_container_width=True, help="Uncheck all Include Amt boxes")
+
+if not filtered_df.empty:
+    filtered_df_display = filtered_df.copy()
     
-    # Row 1: Sort dropdown
-    sort_option = st.selectbox(
-        "Sort By:", 
-        [
-            "Date (Newest)",
-            "Date (Oldest)", 
-            "Amount (Lowest first - Big Spends)", 
-            "Amount (Highest first - Income)", 
-            "Name (A-Z)",
-            "Name (Z-A)",
-            "Description (A-Z)", 
-            "Description (Z-A)",
-            "Native (Click Headers to Sort)"
-        ]
-    )
+    # Apply sorting
+    if sort_option == "Date (Newest)":
+        filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=False)
+    elif sort_option == "Date (Oldest)":
+        filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=True)
+    elif sort_option == "Amount (Lowest first - Big Spends)":
+        filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=True)
+    elif sort_option == "Amount (Highest first - Income)":
+        filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=False)
+    elif sort_option == "Name (A-Z)":
+        filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=True)
+    elif sort_option == "Name (Z-A)":
+        filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=False)
+    elif sort_option == "Description (A-Z)":
+        filtered_df_display = filtered_df_display.sort_values(by="Description", ascending=True)
+    elif sort_option == "Description (Z-A)":
+        filtered_df_display = filtered_df_display.sort_values(by="Description", ascending=False)
 
-    # Row 2: Bulk Select buttons for checkboxes
-    st.markdown("**Bulk Select (applies to table below):**")
-    col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6, col_sel7, col_sel8 = st.columns(8)
-
-    select_all_delete = col_sel1.button("Select 🗑️", key="sel_all_del", use_container_width=True, help="Select all for deletion")
-    clear_all_delete = col_sel2.button("Clear 🗑️", key="clr_all_del", use_container_width=True, help="Unselect all for deletion")
-    select_all_lock = col_sel3.button("Lock 🔒", key="sel_all_lock", use_container_width=True, help="Lock all entries shown")
-    clear_all_lock = col_sel4.button("Unlock 🔓", key="clr_all_lock", use_container_width=True, help="Unlock all entries shown")
-    select_all_rule = col_sel5.button("Select ➕", key="sel_all_rule", use_container_width=True, help="Check all Create Rule boxes")
-    clear_all_rule = col_sel6.button("Clear ➕", key="clr_all_rule", use_container_width=True, help="Uncheck all Create Rule boxes")
-    select_all_amt = col_sel7.button("Select 💲", key="sel_all_amt", use_container_width=True, help="Check all Include Amt boxes")
-    clear_all_amt = col_sel8.button("Clear 💲", key="clr_all_amt", use_container_width=True, help="Uncheck all Include Amt boxes")
-
-    if not filtered_df.empty:
-        filtered_df_display = filtered_df.copy()
-        
-        # Apply sorting
-        if sort_option == "Date (Newest)":
-            filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=False)
-        elif sort_option == "Date (Oldest)":
-            filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=True)
-        elif sort_option == "Amount (Lowest first - Big Spends)":
-            filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=True)
-        elif sort_option == "Amount (Highest first - Income)":
-            filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=False)
-        elif sort_option == "Name (A-Z)":
-            filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=True)
-        elif sort_option == "Name (Z-A)":
-            filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=False)
-        elif sort_option == "Description (A-Z)":
-            filtered_df_display = filtered_df_display.sort_values(by="Description", ascending=True)
-        elif sort_option == "Description (Z-A)":
-            filtered_df_display = filtered_df_display.sort_values(by="Description", ascending=False)
-
-        filtered_df_display['Date'] = filtered_df_display['Date'].dt.date
-        
-        # Add UI-only columns
+    filtered_df_display['Date'] = filtered_df_display['Date'].dt.date
+    
+    # Add UI-only columns
+    filtered_df_display['Delete'] = False
+    filtered_df_display['Create Rule'] = False
+    filtered_df_display['Include Amt'] = False
+    filtered_df_display['Locked'] = filtered_df_display['Locked'].fillna(False).astype(bool)
+    
+    if 'Name' not in filtered_df_display.columns:
+        filtered_df_display['Name'] = ''
+    
+    # Apply bulk select buttons
+    if select_all_delete:
+        filtered_df_display['Delete'] = True
+    if clear_all_delete:
         filtered_df_display['Delete'] = False
+    if select_all_lock:
+        filtered_df_display['Locked'] = True
+    if clear_all_lock:
+        filtered_df_display['Locked'] = False
+    if select_all_rule:
+        filtered_df_display['Create Rule'] = True
+    if clear_all_rule:
         filtered_df_display['Create Rule'] = False
+    if select_all_amt:
+        filtered_df_display['Include Amt'] = True
+    if clear_all_amt:
         filtered_df_display['Include Amt'] = False
-        filtered_df_display['Locked'] = filtered_df_display['Locked'].fillna(False).astype(bool)
+    
+    # Column order
+    display_cols = [
+        'id',
+        'Delete',
+        'Locked',
+        'Date',
+        'Name',
+        'Amount',
+        'Category',
+        'SubCategory',
+        'Person',
+        'Description',
+        'Source',
+        'Create Rule',
+        'Include Amt'
+    ]
+    filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
+    
+    edited_df = st.data_editor(
+        filtered_df_display,
+        column_config={
+            "id": None,
+            "Delete": st.column_config.CheckboxColumn("🗑️", width="small", help="Select to delete this transaction"),
+            "Locked": st.column_config.CheckboxColumn("🔒", width="small"),
+            "Create Rule": st.column_config.CheckboxColumn("➕", width="small", help="Create a rule from this transaction"),
+            "Include Amt": st.column_config.CheckboxColumn("💲", width="small", help="Include exact amount in the rule"),
+            "Name": st.column_config.TextColumn("Name", help="Friendly name for this transaction"),
+            "Category": st.column_config.SelectboxColumn("Category", options=available_cats, required=True),
+            "SubCategory": st.column_config.SelectboxColumn("Sub-Category", options=available_subcats, required=False),
+            "Person": st.column_config.SelectboxColumn("Person", options=available_people, required=True),
+            "Source": st.column_config.TextColumn("Source", disabled=True),
+            "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+            "Date": st.column_config.DateColumn("Date")
+        },
+        hide_index=True, 
+        use_container_width=True, 
+        num_rows="fixed",
+        height=500
+    )
+    
+    # Count selected for deletion
+    rows_to_delete = edited_df[edited_df['Delete'] == True] if 'Delete' in edited_df.columns else pd.DataFrame()
+    delete_count = len(rows_to_delete)
+    
+    # Action buttons row
+    st.markdown("---")
+    col_action1, col_action2, col_action3 = st.columns([2, 1, 1])
+    
+    save_clicked = col_action1.button("💾 Save Changes & Create Rules", type="primary", use_container_width=True)
+    
+    if delete_count > 0:
+        delete_label = f"🗑️ Delete Selected ({delete_count})"
+        delete_clicked = col_action2.button(delete_label, type="secondary", use_container_width=True)
+    else:
+        delete_clicked = False
+        col_action2.button("🗑️ Delete Selected (0)", disabled=True, use_container_width=True)
+    
+    # Handle Delete Selected - SAVE TO SESSION STATE before confirmation
+    if delete_clicked and delete_count > 0:
+        st.session_state['rows_to_delete'] = rows_to_delete.copy()
+        st.session_state['confirm_delete_selected'] = True
+        st.rerun()
+    
+    # Show confirmation dialog using saved data from session state
+    if st.session_state.get('confirm_delete_selected', False):
+        saved_rows = st.session_state.get('rows_to_delete', pd.DataFrame())
+        saved_count = len(saved_rows) if not saved_rows.empty else 0
         
-        if 'Name' not in filtered_df_display.columns:
-            filtered_df_display['Name'] = ''
-        
-        # Apply bulk select buttons
-        if select_all_delete:
-            filtered_df_display['Delete'] = True
-        if clear_all_delete:
-            filtered_df_display['Delete'] = False
-        if select_all_lock:
-            filtered_df_display['Locked'] = True
-        if clear_all_lock:
-            filtered_df_display['Locked'] = False
-        if select_all_rule:
-            filtered_df_display['Create Rule'] = True
-        if clear_all_rule:
-            filtered_df_display['Create Rule'] = False
-        if select_all_amt:
-            filtered_df_display['Include Amt'] = True
-        if clear_all_amt:
-            filtered_df_display['Include Amt'] = False
-        
-        # Column order
-        display_cols = [
-            'id',
-            'Delete',
-            'Locked',
-            'Date',
-            'Name',
-            'Amount',
-            'Category',
-            'SubCategory',
-            'Person',
-            'Description',
-            'Source',
-            'Create Rule',
-            'Include Amt'
-        ]
-        filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
-        
-        edited_df = st.data_editor(
-            filtered_df_display,
-            column_config={
-                "id": None,
-                "Delete": st.column_config.CheckboxColumn("🗑️", width="small", help="Select to delete this transaction"),
-                "Locked": st.column_config.CheckboxColumn("🔒", width="small"),
-                "Create Rule": st.column_config.CheckboxColumn("➕", width="small", help="Create a rule from this transaction"),
-                "Include Amt": st.column_config.CheckboxColumn("💲", width="small", help="Include exact amount in the rule"),
-                "Name": st.column_config.TextColumn("Name", help="Friendly name for this transaction"),
-                "Category": st.column_config.SelectboxColumn("Category", options=available_cats, required=True),
-                "SubCategory": st.column_config.SelectboxColumn("Sub-Category", options=available_subcats, required=False),
-                "Person": st.column_config.SelectboxColumn("Person", options=available_people, required=True),
-                "Source": st.column_config.TextColumn("Source", disabled=True),
-                "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
-                "Date": st.column_config.DateColumn("Date")
-            },
-            hide_index=True, 
-            use_container_width=True, 
-            num_rows="fixed",
-            height=500
-        )
-        
-        # Count selected for deletion
-        rows_to_delete = edited_df[edited_df['Delete'] == True] if 'Delete' in edited_df.columns else pd.DataFrame()
-        delete_count = len(rows_to_delete)
-        
-        # Action buttons row
-        st.markdown("---")
-        col_action1, col_action2, col_action3 = st.columns([2, 1, 1])
-        
-        save_clicked = col_action1.button("💾 Save Changes & Create Rules", type="primary", use_container_width=True)
-        
-        if delete_count > 0:
-            delete_label = f"🗑️ Delete Selected ({delete_count})"
-            delete_clicked = col_action2.button(delete_label, type="secondary", use_container_width=True)
-        else:
-            delete_clicked = False
-            col_action2.button("🗑️ Delete Selected (0)", disabled=True, use_container_width=True)
-        
-        # Handle Delete Selected with confirmation
-        if delete_clicked:
-            st.session_state['confirm_delete_selected'] = True
-        
-        if st.session_state.get('confirm_delete_selected', False) and delete_count > 0:
-            st.warning(f"⚠️ Are you sure you want to delete **{delete_count}** selected transactions? They will be moved to the Recycle Bin.")
+        if saved_count > 0:
+            st.warning(f"⚠️ Are you sure you want to delete **{saved_count}** selected transactions? They will be moved to the Recycle Bin.")
             col_confirm1, col_confirm2, col_confirm3 = st.columns([1, 1, 2])
             
             if col_confirm1.button("✅ Yes, Delete", key="confirm_del_yes", type="primary", use_container_width=True):
-                ids_to_delete = rows_to_delete['id'].dropna().tolist()
+                ids_to_delete = saved_rows['id'].dropna().tolist()
                 if ids_to_delete:
-                    # Move to trash instead of permanent delete
-                    move_to_trash(rows_to_delete)
+                    move_to_trash(saved_rows)
                     delete_expenses(ids_to_delete)
                     
                     st.session_state['confirm_delete_selected'] = False
+                    st.session_state['rows_to_delete'] = None
                     st.success(f"🗑️ Moved {len(ids_to_delete)} items to Recycle Bin!")
                     st.rerun()
             
             if col_confirm2.button("❌ Cancel", key="confirm_del_no", use_container_width=True):
                 st.session_state['confirm_delete_selected'] = False
+                st.session_state['rows_to_delete'] = None
                 st.rerun()
+        else:
+            st.session_state['confirm_delete_selected'] = False
+    
+    # Handle Save Changes
+    if save_clicked:
+        rules_created = 0
+        new_cats_added = False
+        new_subs_added = False
         
-        # Handle Save Changes
-        if save_clicked:
-            rules_created = 0
-            new_cats_added = False
-            new_subs_added = False
-            
-            for idx, row in edited_df.iterrows():
-                if row.get('Delete', False):
-                    continue
-                    
-                if row.get('Create Rule', False):
-                    desc_text = str(row['Description']).lower().strip()
-                    name = row.get('Name', '')
-                    cat = row['Category']
-                    sub = row.get('SubCategory', '')
-                    person = row.get('Person', 'Family')
-                    
-                    rule_amount = row['Amount'] if row.get('Include Amt', False) else None
-                    
-                    new_rule = pd.DataFrame([{
-                        "Keyword": desc_text, 
-                        "Name": name,
-                        "Category": cat, 
-                        "SubCategory": sub, 
-                        "Person": person,
-                        "Amount": rule_amount
-                    }])
-                    add_rules(new_rule)
-                    rules_created += 1
-                    
-                    if cat not in st.session_state['categories']:
-                        st.session_state['categories'].append(cat)
-                        st.session_state['categories'].sort()
-                        new_cats_added = True
-                    
-                    if sub and sub not in st.session_state['subcategories']:
-                        st.session_state['subcategories'].append(sub)
-                        st.session_state['subcategories'].sort()
-                        new_subs_added = True
-                    
-                    edited_df.at[idx, 'Create Rule'] = False
-                    edited_df.at[idx, 'Include Amt'] = False
-                    edited_df.at[idx, 'Locked'] = True
+        for idx, row in edited_df.iterrows():
+            if row.get('Delete', False):
+                continue
+                
+            if row.get('Create Rule', False):
+                desc_text = str(row['Description']).lower().strip()
+                name = row.get('Name', '')
+                cat = row['Category']
+                sub = row.get('SubCategory', '')
+                person = row.get('Person', 'Family')
+                
+                rule_amount = row['Amount'] if row.get('Include Amt', False) else None
+                
+                new_rule = pd.DataFrame([{
+                    "Keyword": desc_text, 
+                    "Name": name,
+                    "Category": cat, 
+                    "SubCategory": sub, 
+                    "Person": person,
+                    "Amount": rule_amount
+                }])
+                add_rules(new_rule)
+                rules_created += 1
+                
+                if cat not in st.session_state['categories']:
+                    st.session_state['categories'].append(cat)
+                    st.session_state['categories'].sort()
+                    new_cats_added = True
+                
+                if sub and sub not in st.session_state['subcategories']:
+                    st.session_state['subcategories'].append(sub)
+                    st.session_state['subcategories'].sort()
+                    new_subs_added = True
+                
+                edited_df.at[idx, 'Create Rule'] = False
+                edited_df.at[idx, 'Include Amt'] = False
+                edited_df.at[idx, 'Locked'] = True
 
-            if rules_created > 0:
-                if new_cats_added: 
-                    save_list("categories", st.session_state['categories'])
-                if new_subs_added: 
-                    save_list("subcategories", st.session_state['subcategories'])
-                st.toast(f"✅ Created {rules_created} new rules!", icon="🧠")
+        if rules_created > 0:
+            if new_cats_added: 
+                save_list("categories", st.session_state['categories'])
+            if new_subs_added: 
+                save_list("subcategories", st.session_state['subcategories'])
+            st.toast(f"✅ Created {rules_created} new rules!", icon="🧠")
 
-            save_df = edited_df[edited_df['Delete'] == False].drop(columns=['Delete', 'Create Rule', 'Include Amt'], errors='ignore')
-            
-            existing_rows = save_df[save_df['id'].notna()].copy()
-            new_rows = save_df[save_df['id'].isna()].copy()
-            
-            if not existing_rows.empty:
-                upsert_expenses(existing_rows)
-            
-            if not new_rows.empty:
-                insert_expenses(new_rows)
-            
-            st.success("✅ Changes Saved!")
-            st.rerun()
+        save_df = edited_df[edited_df['Delete'] == False].drop(columns=['Delete', 'Create Rule', 'Include Amt'], errors='ignore')
+        
+        existing_rows = save_df[save_df['id'].notna()].copy()
+        new_rows = save_df[save_df['id'].isna()].copy()
+        
+        if not existing_rows.empty:
+            upsert_expenses(existing_rows)
+        
+        if not new_rows.empty:
+            insert_expenses(new_rows)
+        
+        st.success("✅ Changes Saved!")
+        st.rerun()
 
 else:
     st.info("👋 Upload a file or Paste Text in the sidebar to begin!")
