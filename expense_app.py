@@ -60,6 +60,72 @@ if not check_password():
     st.stop()
 
 # ============================================
+# 1.5 LICENSE CHECK
+# ============================================
+def check_license():
+    """Check if user has valid account number and license hasn't expired."""
+    user = st.session_state["current_user"]
+    
+    # Get license info from secrets
+    if "licenses" not in st.secrets:
+        st.error("⚠️ No license configuration found. Contact admin.")
+        return False
+    
+    # Check account number exists
+    account_key = f"{user}_account"
+    expiry_key = f"{user}_expiry"
+    
+    if account_key not in st.secrets["licenses"]:
+        st.error(f"⚠️ No license found for user '{user}'. Contact admin.")
+        return False
+    
+    user_account = st.secrets["licenses"][account_key]
+    
+    # Check expiry date exists
+    if expiry_key not in st.secrets["licenses"]:
+        st.error(f"⚠️ No expiry date configured for user '{user}'. Contact admin.")
+        return False
+    
+    expiry_str = st.secrets["licenses"][expiry_key]
+    
+    # Parse expiry date
+    try:
+        expiry_date = datetime.datetime.strptime(expiry_str, "%Y-%m-%d").date()
+    except ValueError:
+        st.error(f"⚠️ Invalid expiry date format. Contact admin.")
+        return False
+    
+    today = datetime.date.today()
+    
+    # Check if expired
+    if today > expiry_date:
+        st.title("🔒 License Expired")
+        st.error(f"""
+        ⚠️ **Your license expired on {expiry_date.strftime('%B %d, %Y')}**
+        
+        Account: `{user_account}`
+        
+        Please contact support to renew your subscription.
+        """)
+        return False
+    
+    # Warning if expiring soon
+    days_left = (expiry_date - today).days
+    if days_left <= 7:
+        st.error(f"🚨 Your license expires in **{days_left} days**! Renew immediately to avoid interruption.")
+    elif days_left <= 30:
+        st.warning(f"⏰ Your license expires in **{days_left} days** ({expiry_date.strftime('%b %d, %Y')}). Please renew soon!")
+    
+    # Store license info in session
+    st.session_state["user_account"] = user_account
+    st.session_state["license_expiry"] = expiry_date
+    
+    return True
+
+if not check_license():
+    st.stop()
+
+# ============================================
 # 2. SUPABASE CONNECTION (Per-User Project)
 # ============================================
 current_user = st.session_state["current_user"]
@@ -230,7 +296,6 @@ def get_match(description, amount, rules_df):
     
     for _, row in rules_sorted.iterrows():
         if str(row['Keyword']).lower() in desc:
-            # Check exact amount if specified in rule
             rule_amount = row.get('Amount')
             
             if pd.notna(rule_amount) and rule_amount is not None:
@@ -343,6 +408,7 @@ if not df_history.empty:
     search_field = st.sidebar.radio("Search in:", ["Name", "Description", "Both"], horizontal=True, index=2)
     search_term = st.sidebar.text_input("Search", placeholder="e.g. Starbucks, Uber")
 
+    # Build available options from data + saved settings
     data_people = df_history['Person'].dropna().unique().tolist()
     available_people = sorted(list(set(st.session_state['people'] + data_people)))
     
@@ -352,44 +418,91 @@ if not df_history.empty:
     data_subs = df_history['SubCategory'].dropna().unique().tolist()
     data_subs = [x for x in data_subs if x != '']
     available_subcats = sorted(list(set(st.session_state['subcategories'] + data_subs)))
-
-    # Filter People
-    st.sidebar.markdown("**Filter People**")
-    all_people = st.sidebar.checkbox("Select All People", value=True)
-    if all_people:
-        selected_people = available_people
-        st.sidebar.multiselect("Select People", available_people, default=available_people, disabled=True, key="ppl_filter")
-    else:
-        selected_people = st.sidebar.multiselect("Select People", available_people, default=[], key="ppl_filter")
-
-    # Filter Categories
-    st.sidebar.markdown("**Filter Categories**")
-    all_cats = st.sidebar.checkbox("Select All Categories", value=False)
-    default_cats_view = [c for c in available_cats if c != 'Transfer/Payment']
-    if all_cats:
-        selected_categories = available_cats
-        st.sidebar.multiselect("Select Categories", available_cats, default=available_cats, disabled=True, key="cat_filter")
-    else:
-        selected_categories = st.sidebar.multiselect("Select Categories", available_cats, default=default_cats_view, key="cat_filter")
     
-    # Filter Sub-Categories
-    st.sidebar.markdown("**Filter Sub-Categories**")
-    all_subs = st.sidebar.checkbox("Select All Sub-Categories", value=True)
-    if all_subs:
-        selected_subcats = available_subcats
-        st.sidebar.multiselect("Select Sub-Cats", available_subcats, default=available_subcats, disabled=True, key="sub_filter")
-    else:
-        selected_subcats = st.sidebar.multiselect("Select Sub-Cats", available_subcats, default=[], key="sub_filter")
-
-    # Filter Source
-    st.sidebar.markdown("**Filter Source**")
-    all_sources = st.sidebar.checkbox("Select All Sources", value=True)
     all_sources_list = sorted(df_history['Source'].dropna().unique().tolist())
-    if all_sources:
-        selected_sources = all_sources_list
-        st.sidebar.multiselect("Select Source", all_sources_list, default=all_sources_list, disabled=True, key="src_filter")
-    else:
-        selected_sources = st.sidebar.multiselect("Select Source", all_sources_list, default=[], key="src_filter")
+
+    # --- Initialize session state for filters (first load defaults) ---
+    if 'ppl_selection' not in st.session_state:
+        st.session_state['ppl_selection'] = available_people
+    if 'cat_selection' not in st.session_state:
+        st.session_state['cat_selection'] = [c for c in available_cats if c != 'Transfer/Payment']
+    if 'sub_selection' not in st.session_state:
+        st.session_state['sub_selection'] = available_subcats
+    if 'src_selection' not in st.session_state:
+        st.session_state['src_selection'] = all_sources_list
+
+    # --- FILTER: People ---
+    st.sidebar.markdown("**Filter People**")
+    col_ppl1, col_ppl2 = st.sidebar.columns(2)
+    if col_ppl1.button("✅ All", key="btn_all_ppl", use_container_width=True):
+        st.session_state['ppl_selection'] = available_people
+        st.rerun()
+    if col_ppl2.button("🗑️ Clear", key="btn_clr_ppl", use_container_width=True):
+        st.session_state['ppl_selection'] = []
+        st.rerun()
+    selected_people = st.sidebar.multiselect(
+        "People",
+        available_people,
+        default=st.session_state['ppl_selection'],
+        key="ppl_filter",
+        label_visibility="collapsed"
+    )
+    st.session_state['ppl_selection'] = selected_people
+
+    # --- FILTER: Categories ---
+    st.sidebar.markdown("**Filter Categories**")
+    col_cat1, col_cat2 = st.sidebar.columns(2)
+    if col_cat1.button("✅ All", key="btn_all_cat", use_container_width=True):
+        st.session_state['cat_selection'] = available_cats
+        st.rerun()
+    if col_cat2.button("🗑️ Clear", key="btn_clr_cat", use_container_width=True):
+        st.session_state['cat_selection'] = []
+        st.rerun()
+    selected_categories = st.sidebar.multiselect(
+        "Categories",
+        available_cats,
+        default=st.session_state['cat_selection'],
+        key="cat_filter",
+        label_visibility="collapsed"
+    )
+    st.session_state['cat_selection'] = selected_categories
+
+    # --- FILTER: Sub-Categories ---
+    st.sidebar.markdown("**Filter Sub-Categories**")
+    col_sub1, col_sub2 = st.sidebar.columns(2)
+    if col_sub1.button("✅ All", key="btn_all_sub", use_container_width=True):
+        st.session_state['sub_selection'] = available_subcats
+        st.rerun()
+    if col_sub2.button("🗑️ Clear", key="btn_clr_sub", use_container_width=True):
+        st.session_state['sub_selection'] = []
+        st.rerun()
+    selected_subcats = st.sidebar.multiselect(
+        "Sub-Categories",
+        available_subcats,
+        default=st.session_state['sub_selection'],
+        key="sub_filter",
+        label_visibility="collapsed"
+    )
+    st.session_state['sub_selection'] = selected_subcats
+
+    # --- FILTER: Source ---
+    st.sidebar.markdown("**Filter Source**")
+    col_src1, col_src2 = st.sidebar.columns(2)
+    if col_src1.button("✅ All", key="btn_all_src", use_container_width=True):
+        st.session_state['src_selection'] = all_sources_list
+        st.rerun()
+    if col_src2.button("🗑️ Clear", key="btn_clr_src", use_container_width=True):
+        st.session_state['src_selection'] = []
+        st.rerun()
+    selected_sources = st.sidebar.multiselect(
+        "Source",
+        all_sources_list,
+        default=st.session_state['src_selection'],
+        key="src_filter",
+        label_visibility="collapsed"
+    )
+    st.session_state['src_selection'] = selected_sources
+
 else:
     start_date, end_date = None, None
     selected_people, selected_categories, selected_subcats, selected_sources = [], [], [], []
@@ -656,6 +769,18 @@ st.markdown(f"<style>html, body, [class*='css'] {{ font-size: {font_size} !impor
 
 st.sidebar.markdown("---")
 
+# === LICENSE INFO ===
+st.sidebar.header("📄 License")
+if "user_account" in st.session_state:
+    st.sidebar.text(f"Account: {st.session_state['user_account']}")
+if "license_expiry" in st.session_state:
+    expiry = st.session_state['license_expiry']
+    days_left = (expiry - datetime.date.today()).days
+    st.sidebar.text(f"Expires: {expiry.strftime('%b %d, %Y')}")
+    st.sidebar.text(f"Days left: {days_left}")
+
+st.sidebar.markdown("---")
+
 # === CONNECTION INFO (BOTTOM) ===
 st.sidebar.header("📌 Connection")
 st.sidebar.success("✅ Connected to Supabase")
@@ -772,33 +897,55 @@ if not df_history.empty and start_date and end_date:
     st.markdown("---")
     st.subheader("📝 Transaction Editor")
     
-    col_sort, col_lock_btn = st.columns([3, 1])
-    
-    sort_option = col_sort.selectbox(
+    # Row 1: Sort dropdown
+    sort_option = st.selectbox(
         "Sort By:", 
         [
-            "Native (Click Headers to Sort)", 
-            "Date (Newest)", 
+            "Date (Newest)",
             "Date (Oldest)", 
             "Amount (Lowest first - Big Spends)", 
             "Amount (Highest first - Income)", 
             "Name (A-Z)",
             "Name (Z-A)",
             "Description (A-Z)", 
-            "Description (Z-A)"
+            "Description (Z-A)",
+            "Native (Click Headers to Sort)"
         ]
     )
     
-    if col_lock_btn.button("🔒 Lock All Shown"):
+    # Row 2: Lock/Unlock buttons
+    st.markdown("**Lock Controls:**")
+    col_lock1, col_lock2, col_lock3, col_lock4 = st.columns(4)
+    
+    if col_lock1.button("🔒 Lock All Shown", use_container_width=True):
         if not filtered_df.empty:
             filtered_df['Locked'] = True
             upsert_expenses(filtered_df)
-            st.success("Locked!")
+            st.success("All shown transactions locked!")
             st.rerun()
+    
+    if col_lock2.button("🔓 Unlock All Shown", use_container_width=True):
+        if not filtered_df.empty:
+            filtered_df['Locked'] = False
+            upsert_expenses(filtered_df)
+            st.success("All shown transactions unlocked!")
+            st.rerun()
+
+    # Row 3: Select All buttons for checkboxes
+    st.markdown("**Bulk Select (applies to table below):**")
+    col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6 = st.columns(6)
+    
+    select_all_lock = col_sel1.button("✅ All 🔒", key="sel_all_lock", use_container_width=True, help="Check all Lock boxes")
+    clear_all_lock = col_sel2.button("🗑️ All 🔒", key="clr_all_lock", use_container_width=True, help="Uncheck all Lock boxes")
+    select_all_rule = col_sel3.button("✅ All ➕", key="sel_all_rule", use_container_width=True, help="Check all Create Rule boxes")
+    clear_all_rule = col_sel4.button("🗑️ All ➕", key="clr_all_rule", use_container_width=True, help="Uncheck all Create Rule boxes")
+    select_all_amt = col_sel5.button("✅ All 💲", key="sel_all_amt", use_container_width=True, help="Check all Include Amt boxes")
+    clear_all_amt = col_sel6.button("🗑️ All 💲", key="clr_all_amt", use_container_width=True, help="Uncheck all Include Amt boxes")
 
     if not filtered_df.empty:
         filtered_df_display = filtered_df.copy()
         
+        # Apply sorting
         if sort_option == "Date (Newest)":
             filtered_df_display = filtered_df_display.sort_values(by="Date", ascending=False)
         elif sort_option == "Date (Oldest)":
@@ -826,8 +973,35 @@ if not df_history.empty and start_date and end_date:
         if 'Name' not in filtered_df_display.columns:
             filtered_df_display['Name'] = ''
         
-        # Reorder columns
-        display_cols = ['id', 'Date', 'Name', 'Description', 'Amount', 'Category', 'SubCategory', 'Person', 'Source', 'Locked', 'Create Rule', 'Include Amt']
+        # Apply bulk select buttons
+        if select_all_lock:
+            filtered_df_display['Locked'] = True
+        if clear_all_lock:
+            filtered_df_display['Locked'] = False
+        if select_all_rule:
+            filtered_df_display['Create Rule'] = True
+        if clear_all_rule:
+            filtered_df_display['Create Rule'] = False
+        if select_all_amt:
+            filtered_df_display['Include Amt'] = True
+        if clear_all_amt:
+            filtered_df_display['Include Amt'] = False
+        
+        # Column order
+        display_cols = [
+            'id',
+            'Locked',
+            'Create Rule',
+            'Include Amt',
+            'Date',
+            'Name',
+            'Amount',
+            'Category',
+            'SubCategory',
+            'Person',
+            'Description',
+            'Source'
+        ]
         filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
         
         edited_df = st.data_editor(
@@ -835,8 +1009,8 @@ if not df_history.empty and start_date and end_date:
             column_config={
                 "id": None,
                 "Locked": st.column_config.CheckboxColumn("🔒", width="small"),
-                "Create Rule": st.column_config.CheckboxColumn("➕ Rule", width="small", help="Create a rule from this transaction"),
-                "Include Amt": st.column_config.CheckboxColumn("💲 Amt", width="small", help="Include exact amount in the rule"),
+                "Create Rule": st.column_config.CheckboxColumn("➕", width="small", help="Create a rule from this transaction"),
+                "Include Amt": st.column_config.CheckboxColumn("💲", width="small", help="Include exact amount in the rule"),
                 "Name": st.column_config.TextColumn("Name", help="Friendly name for this transaction"),
                 "Category": st.column_config.SelectboxColumn("Category", options=available_cats, required=True),
                 "SubCategory": st.column_config.SelectboxColumn("Sub-Category", options=available_subcats, required=False),
@@ -851,7 +1025,7 @@ if not df_history.empty and start_date and end_date:
             height=500
         )
         
-        if st.button("💾 Save Changes & Create Rules"):
+        if st.button("💾 Save Changes & Create Rules", type="primary", use_container_width=True):
             # 1. HANDLE DELETIONS
             original_ids = set(filtered_df_display['id'].dropna().tolist())
             remaining_ids = set(edited_df['id'].dropna().tolist()) if 'id' in edited_df.columns else set()
@@ -874,7 +1048,6 @@ if not df_history.empty and start_date and end_date:
                     sub = row.get('SubCategory', '')
                     person = row.get('Person', 'Family')
                     
-                    # Include amount only if checkbox is checked
                     rule_amount = row['Amount'] if row.get('Include Amt', False) else None
                     
                     new_rule = pd.DataFrame([{
