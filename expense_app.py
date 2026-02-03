@@ -308,9 +308,10 @@ def load_list(table_name):
         resp = sb.table(table_name).select("name").execute()
         if resp.data:
             return sorted([r['name'] for r in resp.data if r.get('name')])
-        return []
-    except:
-        return []
+        return []  # Empty table is fine
+    except Exception as e:
+        st.error(f"⚠️ Failed to load {table_name}: {e}")
+        return None  # Return None on error, not empty list
 
 def save_list(table_name, items):
     try:
@@ -389,15 +390,41 @@ try:
     loaded_subcats = load_list("subcategories")
     loaded_people = load_list("people")
     
-    if not loaded_cats:
-        save_list("categories", DEFAULT_CATEGORIES)
-        loaded_cats = sorted(DEFAULT_CATEGORIES)
-    if not loaded_subcats:
-        save_list("subcategories", DEFAULT_SUBCATS)
-        loaded_subcats = sorted(DEFAULT_SUBCATS)
-    if not loaded_people:
-        save_list("people", DEFAULT_PEOPLE)
-        loaded_people = sorted(DEFAULT_PEOPLE)
+    # Check if this is a fresh database (no expenses)
+    is_fresh_db = df_history.empty or len(df_history) == 0
+    
+    # Handle categories
+    if loaded_cats is None:
+        # Error loading - don't overwrite, use cached or defaults
+        loaded_cats = st.session_state.get('categories', sorted(DEFAULT_CATEGORIES))
+    elif not loaded_cats:
+        if is_fresh_db:
+            # Fresh database - save defaults
+            save_list("categories", DEFAULT_CATEGORIES)
+            loaded_cats = sorted(DEFAULT_CATEGORIES)
+        else:
+            # DB has expenses but categories empty - use cached or defaults
+            loaded_cats = st.session_state.get('categories', sorted(DEFAULT_CATEGORIES))
+    
+    # Handle subcategories
+    if loaded_subcats is None:
+        loaded_subcats = st.session_state.get('subcategories', sorted(DEFAULT_SUBCATS))
+    elif not loaded_subcats:
+        if is_fresh_db:
+            save_list("subcategories", DEFAULT_SUBCATS)
+            loaded_subcats = sorted(DEFAULT_SUBCATS)
+        else:
+            loaded_subcats = st.session_state.get('subcategories', sorted(DEFAULT_SUBCATS))
+    
+    # Handle people
+    if loaded_people is None:
+        loaded_people = st.session_state.get('people', sorted(DEFAULT_PEOPLE))
+    elif not loaded_people:
+        if is_fresh_db:
+            save_list("people", DEFAULT_PEOPLE)
+            loaded_people = sorted(DEFAULT_PEOPLE)
+        else:
+            loaded_people = st.session_state.get('people', sorted(DEFAULT_PEOPLE))
     
     if df_rules.empty:
         seed_rules = [{"Keyword": k, "Name": v["name"], "Category": v["category"], "SubCategory": v["subcategory"], "Person": v["person"], "Amount": None} for k, v in DEFAULT_RULES.items()]
@@ -905,55 +932,46 @@ if not df_history.empty and start_date and end_date:
         else:
             st.info("👈 Click a Category on the left to see details.")
 
-        st.markdown("---")
+    st.markdown("---")
     st.subheader("📝 Transaction Editor")
     
     sort_option = st.selectbox("Sort By:", ["Date (Newest)", "Date (Oldest)", "Amount (Lowest first - Big Spends)", "Amount (Highest first - Income)", "Name (A-Z)", "Name (Z-A)", "Description (A-Z)", "Description (Z-A)", "Native (Click Headers to Sort)"])
 
-    st.markdown("**Bulk Select (applies to table below):**")
-    col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6, col_sel7, col_sel8 = st.columns(8)
-
-    # Clear cached editor state when any bulk button is clicked
-    if col_sel1.button("Lock 🔒", key="sel_all_lock", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'select_lock'
-        st.rerun()
-    if col_sel2.button("Unlock 🔓", key="clr_all_lock", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'clear_lock'
-        st.rerun()
-    if col_sel3.button("Select 💲", key="sel_all_amt", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'select_amt'
-        st.rerun()
-    if col_sel4.button("Clear 💲", key="clr_all_amt", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'clear_amt'
-        st.rerun()
-    if col_sel5.button("Select ➕", key="sel_all_rule", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'select_rule'
-        st.rerun()
-    if col_sel6.button("Clear ➕", key="clr_all_rule", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'clear_rule'
-        st.rerun()
-    if col_sel7.button("Del All", key="sel_all_del", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'select_delete'
-        st.rerun()
-    if col_sel8.button("Clear Del", key="clr_all_del", use_container_width=True):
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        st.session_state['bulk_action'] = 'clear_delete'
-        st.rerun()
+    # Bulk Actions - Clean Dropdown Style
+    st.markdown("**Bulk Actions:**")
+    col_bulk1, col_bulk2 = st.columns([3, 1])
+    
+    bulk_options = [
+        "Select an action...",
+        "🔒 Lock All",
+        "🔓 Unlock All", 
+        "🗑️ Select All for Delete",
+        "🗑️ Clear Delete Selection",
+        "➕ Select All for Rule Creation",
+        "➕ Clear Rule Selection",
+        "💲 Include Amount in All Rules",
+        "💲 Clear Amount Selection"
+    ]
+    
+    selected_bulk = col_bulk1.selectbox("Bulk Action", bulk_options, label_visibility="collapsed")
+    
+    if col_bulk2.button("▶️ Apply", use_container_width=True):
+        if selected_bulk != "Select an action...":
+            if 'transaction_editor' in st.session_state:
+                del st.session_state['transaction_editor']
+            
+            action_map = {
+                "🔒 Lock All": "select_lock",
+                "🔓 Unlock All": "clear_lock",
+                "🗑️ Select All for Delete": "select_delete",
+                "🗑️ Clear Delete Selection": "clear_delete",
+                "➕ Select All for Rule Creation": "select_rule",
+                "➕ Clear Rule Selection": "clear_rule",
+                "💲 Include Amount in All Rules": "select_amt",
+                "💲 Clear Amount Selection": "clear_amt"
+            }
+            st.session_state['bulk_action'] = action_map[selected_bulk]
+            st.rerun()
 
     if not filtered_df.empty:
         filtered_df_display = filtered_df.copy()
@@ -1001,7 +1019,9 @@ if not df_history.empty and start_date and end_date:
             filtered_df_display['Include Amt'] = True
         elif bulk_action == 'clear_amt':
             filtered_df_display['Include Amt'] = False
-            
+
+        # DON'T clear bulk_action here - we'll clear it after save
+
         display_cols = ['id', 'Delete', 'Locked', 'Date', 'Name', 'Amount', 'Category', 'SubCategory', 'Person', 'Description', 'Source', 'Create Rule', 'Include Amt']
         filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
 
@@ -1060,7 +1080,6 @@ if not df_history.empty and start_date and end_date:
                             del st.session_state['bulk_action']
                         st.success(f"🗑️ Moved {len(ids_to_delete)} items to Recycle Bin!")
                         st.rerun()
-                        
                 if col_confirm2.button("❌ Cancel", key="confirm_del_no", use_container_width=True):
                     st.session_state['confirm_delete_selected'] = False
                     st.session_state['rows_to_delete'] = None
@@ -1117,7 +1136,7 @@ if not df_history.empty and start_date and end_date:
             # CLEAR THE CACHED EDITOR STATE
             if 'transaction_editor' in st.session_state:
                 del st.session_state['transaction_editor']
-
+            
             # CLEAR BULK ACTION AFTER SAVE
             if 'bulk_action' in st.session_state:
                 del st.session_state['bulk_action']
