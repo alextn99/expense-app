@@ -945,10 +945,10 @@ if not df_history.empty and start_date and end_date:
         "Select an action...",
         "🔒 Lock All",
         "🔓 Unlock All", 
-        "🗑️ Select All for Delete",
-        "🗑️ Clear Delete Selection",
         "➕ Select All for Rule Creation",
         "➕ Clear Rule Selection",
+        "🗑️ Select All for Delete",
+        "🗑️ Clear Delete Selection",
         "💲 Include Amount in All Rules",
         "💲 Clear Amount Selection"
     ]
@@ -1022,7 +1022,7 @@ if not df_history.empty and start_date and end_date:
 
         # DON'T clear bulk_action here - we'll clear it after save
 
-        display_cols = ['id', 'Delete', 'Locked', 'Date', 'Name', 'Amount', 'Category', 'SubCategory', 'Person', 'Description', 'Source', 'Create Rule', 'Include Amt']
+        display_cols = ['id', 'Locked', 'Date', 'Name', 'Amount', 'Category', 'SubCategory', 'Person', 'Description', 'Source', 'Include Amt', 'Create Rule', 'Delete']
         filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
 
         edited_df = st.data_editor(filtered_df_display, column_config={
