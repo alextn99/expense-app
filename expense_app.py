@@ -980,8 +980,8 @@ if not df_history.empty and start_date and end_date:
             "Person": st.column_config.SelectboxColumn("Person", options=available_people, required=True),
             "Source": st.column_config.TextColumn("Source", disabled=True),
             "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
-            "Date": st.column_config.DateColumn("Date")
-            "Delete": st.column_config.CheckboxColumn("🗑️", width="small"),
+            "Date": st.column_config.DateColumn("Date"),
+            "Delete": st.column_config.CheckboxColumn("🗑️", width="small")
         }, hide_index=True, use_container_width=True, num_rows="fixed", height=500, key="transaction_editor")
 
         rows_to_delete = edited_df[edited_df['Delete'] == True] if 'Delete' in edited_df.columns else pd.DataFrame()
