@@ -1027,17 +1027,18 @@ if not df_history.empty and start_date and end_date:
 
         edited_df = st.data_editor(filtered_df_display, column_config={
             "id": None,
-            "Delete": st.column_config.CheckboxColumn("🗑️", width="small"),
             "Locked": st.column_config.CheckboxColumn("🔒", width="small"),
-            "Create Rule": st.column_config.CheckboxColumn("➕", width="small"),
-            "Include Amt": st.column_config.CheckboxColumn("💲", width="small"),
+            "Date": st.column_config.DateColumn("Date"),
             "Name": st.column_config.TextColumn("Name"),
+            "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
             "Category": st.column_config.SelectboxColumn("Category", options=available_cats, required=True),
             "SubCategory": st.column_config.SelectboxColumn("Sub-Category", options=available_subcats),
             "Person": st.column_config.SelectboxColumn("Person", options=available_people, required=True),
+            "Description": st.column_config.TextColumn("Description"),
             "Source": st.column_config.TextColumn("Source", disabled=True),
-            "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
-            "Date": st.column_config.DateColumn("Date")
+            "Include Amt": st.column_config.CheckboxColumn("💲", width="small"),
+            "Create Rule": st.column_config.CheckboxColumn("➕", width="small"),
+            "Delete": st.column_config.CheckboxColumn("🗑️", width="small")
         }, hide_index=True, use_container_width=True, num_rows="fixed", height=500, key="transaction_editor")
 
         rows_to_delete = edited_df[edited_df['Delete'] == True] if 'Delete' in edited_df.columns else pd.DataFrame()
