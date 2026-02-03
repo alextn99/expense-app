@@ -943,8 +943,6 @@ if not df_history.empty and start_date and end_date:
     st.markdown("**Bulk Select (applies to table below):**")
     col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6 = st.columns(6)
     
-    select_all_lock = col_sel1.button("Select All 🔒", key="sel_all_lock", use_container_width=True, help="Check all Lock boxes")
-    clear_all_lock = col_sel2.button("Unselect All 🔒", key="clr_all_lock", use_container_width=True, help="Uncheck all Lock boxes")
     select_all_rule = col_sel3.button("Select All ➕", key="sel_all_rule", use_container_width=True, help="Check all Create Rule boxes")
     clear_all_rule = col_sel4.button("Unselect All ➕", key="clr_all_rule", use_container_width=True, help="Uncheck all Create Rule boxes")
     select_all_amt = col_sel5.button("Select All 💲", key="sel_all_amt", use_container_width=True, help="Check all Include Amt boxes")
