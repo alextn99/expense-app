@@ -244,7 +244,6 @@ def delete_expenses(ids):
     for id_val in ids:
         sb.table("expenses").delete().eq("id", int(id_val)).execute()
 
-# --- TRASH / RECYCLE BIN ---
 def move_to_trash(df):
     df_save = df.copy()
     rename_map = {col: EXP_COLS_REV[col] for col in df_save.columns if col in EXP_COLS_REV}
@@ -465,10 +464,13 @@ if not df_history.empty:
 
     data_people = df_history['Person'].dropna().unique().tolist()
     available_people = sorted(list(set(st.session_state['people'] + data_people)))
+    
     data_cats = df_history['Category'].dropna().unique().tolist()
     available_cats = sorted(list(set(st.session_state['categories'] + data_cats)))
+    
     data_subs = [x for x in df_history['SubCategory'].dropna().unique().tolist() if x != '']
     available_subcats = sorted(list(set(st.session_state['subcategories'] + data_subs)))
+    
     all_sources_list = sorted(df_history['Source'].dropna().unique().tolist())
 
     if 'ppl_selection' not in st.session_state:
@@ -488,7 +490,10 @@ if not df_history.empty:
     if col_ppl2.button("🗑️ Clear", key="btn_clr_ppl", use_container_width=True):
         st.session_state['ppl_selection'] = []
         st.rerun()
-    selected_people = st.sidebar.multiselect("People", available_people, default=st.session_state['ppl_selection'], key="ppl_filter", label_visibility="collapsed")
+    valid_ppl = [p for p in st.session_state.get('ppl_selection', []) if p in available_people]
+    if not valid_ppl:
+        valid_ppl = available_people
+    selected_people = st.sidebar.multiselect("People", available_people, default=valid_ppl, key="ppl_filter", label_visibility="collapsed")
     st.session_state['ppl_selection'] = selected_people
 
     st.sidebar.markdown("**Filter Categories**")
@@ -499,7 +504,10 @@ if not df_history.empty:
     if col_cat2.button("🗑️ Clear", key="btn_clr_cat", use_container_width=True):
         st.session_state['cat_selection'] = []
         st.rerun()
-    selected_categories = st.sidebar.multiselect("Categories", available_cats, default=st.session_state['cat_selection'], key="cat_filter", label_visibility="collapsed")
+    valid_cats = [c for c in st.session_state.get('cat_selection', []) if c in available_cats]
+    if not valid_cats:
+        valid_cats = [c for c in available_cats if c != 'Transfer/Payment']
+    selected_categories = st.sidebar.multiselect("Categories", available_cats, default=valid_cats, key="cat_filter", label_visibility="collapsed")
     st.session_state['cat_selection'] = selected_categories
 
     st.sidebar.markdown("**Filter Sub-Categories**")
@@ -510,7 +518,10 @@ if not df_history.empty:
     if col_sub2.button("🗑️ Clear", key="btn_clr_sub", use_container_width=True):
         st.session_state['sub_selection'] = []
         st.rerun()
-    selected_subcats = st.sidebar.multiselect("Sub-Categories", available_subcats, default=st.session_state['sub_selection'], key="sub_filter", label_visibility="collapsed")
+    valid_subs = [s for s in st.session_state.get('sub_selection', []) if s in available_subcats]
+    if not valid_subs:
+        valid_subs = available_subcats
+    selected_subcats = st.sidebar.multiselect("Sub-Categories", available_subcats, default=valid_subs, key="sub_filter", label_visibility="collapsed")
     st.session_state['sub_selection'] = selected_subcats
 
     st.sidebar.markdown("**Filter Source**")
@@ -521,8 +532,12 @@ if not df_history.empty:
     if col_src2.button("🗑️ Clear", key="btn_clr_src", use_container_width=True):
         st.session_state['src_selection'] = []
         st.rerun()
-    selected_sources = st.sidebar.multiselect("Source", all_sources_list, default=st.session_state['src_selection'], key="src_filter", label_visibility="collapsed")
+    valid_srcs = [s for s in st.session_state.get('src_selection', []) if s in all_sources_list]
+    if not valid_srcs:
+        valid_srcs = all_sources_list
+    selected_sources = st.sidebar.multiselect("Source", all_sources_list, default=valid_srcs, key="src_filter", label_visibility="collapsed")
     st.session_state['src_selection'] = selected_sources
+
 else:
     start_date, end_date = None, None
     selected_people, selected_categories, selected_subcats, selected_sources = [], [], [], []
@@ -533,7 +548,6 @@ else:
 
 st.sidebar.markdown("---")
 
-# === MANAGERS ===
 with st.sidebar.expander("📂 Manage Categories", expanded=False):
     cat_df = pd.DataFrame(st.session_state['categories'], columns=["Category Name"]).sort_values("Category Name")
     edited_cat_df = st.data_editor(cat_df, num_rows="dynamic", hide_index=True, use_container_width=True, key="cat_editor")
@@ -650,7 +664,6 @@ with st.sidebar.expander("🧠 Teach the App", expanded=False):
             st.success(f"✅ Rules Re-Applied to {len(changed_ids)} transactions!")
             st.rerun()
 
-# === RECYCLE BIN ===
 with st.sidebar.expander("🗑️ Recycle Bin", expanded=False):
     trash_df = load_trash()
     if not trash_df.empty:
@@ -694,7 +707,6 @@ with st.sidebar.expander("🗑️ Recycle Bin", expanded=False):
 
 st.sidebar.markdown("---")
 
-# === IMPORT DATA ===
 st.sidebar.header("📤 Import Data")
 manual_source = st.sidebar.text_input("Source Name", placeholder="e.g. HSBC Credit", key="source_input")
 input_method = st.sidebar.radio("Input Method:", ["Upload File", "Paste Text"])
@@ -782,7 +794,6 @@ if not new_data.empty:
 
 st.sidebar.markdown("---")
 
-# === SETTINGS ===
 st.sidebar.header("⚙️ Settings")
 font_choice = st.sidebar.select_slider("Aa Text Size", options=["Small", "Default", "Large"], value="Default")
 font_size = "14px" if font_choice == "Small" else "20px" if font_choice == "Large" else "16px"
@@ -837,7 +848,6 @@ if not df_history.empty and start_date and end_date:
 
     filtered_df = df_history.loc[mask].copy()
 
-    # METRICS
     total_expense_gross = filtered_df[filtered_df['Amount'] < 0]['Amount'].sum() * -1
     total_refunds = filtered_df[filtered_df['Amount'] > 0]['Amount'].sum()
     net_spend = total_expense_gross - total_refunds
@@ -872,7 +882,6 @@ if not df_history.empty and start_date and end_date:
             p_display['Total'] = p_display['AbsAmount'].apply(lambda x: f"${x:,.2f}")
             st.dataframe(p_display[['Person', 'Total']], hide_index=True, use_container_width=True)
 
-    # DEEP DIVE
     st.markdown("---")
     st.subheader("📊 Category Deep Dive")
     col_dd1, col_dd2 = st.columns([1, 1])
@@ -896,7 +905,6 @@ if not df_history.empty and start_date and end_date:
         else:
             st.info("👈 Click a Category on the left to see details.")
 
-    # TRANSACTION EDITOR
     st.markdown("---")
     st.subheader("📝 Transaction Editor")
     
@@ -942,7 +950,7 @@ if not df_history.empty and start_date and end_date:
             filtered_df_display['Name'] = ''
 
         if select_all_delete:
-            filtered_df_display['Delete'] = True
+            filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Delete'] = True
         if clear_all_delete:
             filtered_df_display['Delete'] = False
         if select_all_lock:
@@ -950,7 +958,7 @@ if not df_history.empty and start_date and end_date:
         if clear_all_lock:
             filtered_df_display['Locked'] = False
         if select_all_rule:
-            filtered_df_display['Create Rule'] = True
+            filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Create Rule'] = True
         if clear_all_rule:
             filtered_df_display['Create Rule'] = False
         if select_all_amt:
@@ -989,7 +997,6 @@ if not df_history.empty and start_date and end_date:
             delete_clicked = False
             col_action2.button("🗑️ Delete Selected (0)", disabled=True, use_container_width=True)
 
-        # Handle delete with session state persistence
         if delete_clicked and delete_count > 0:
             st.session_state['rows_to_delete'] = rows_to_delete.copy()
             st.session_state['confirm_delete_selected'] = True
@@ -997,7 +1004,7 @@ if not df_history.empty and start_date and end_date:
 
         if st.session_state.get('confirm_delete_selected', False):
             saved_rows = st.session_state.get('rows_to_delete', pd.DataFrame())
-            saved_count = len(saved_rows) if not isinstance(saved_rows, type(None)) and not saved_rows.empty else 0
+            saved_count = len(saved_rows) if saved_rows is not None and not saved_rows.empty else 0
             
             if saved_count > 0:
                 st.warning(f"⚠️ Delete **{saved_count}** transactions? They will be moved to Recycle Bin.")
