@@ -436,9 +436,11 @@ if not df_history.empty:
     col_ppl1, col_ppl2 = st.sidebar.columns(2)
     if col_ppl1.button("✅ All", key="btn_all_ppl", use_container_width=True):
         st.session_state['ppl_selection'] = available_people
+        st.session_state['ppl_filter'] = available_people # FORCE UPDATE WIDGET KEY
         st.rerun()
     if col_ppl2.button("🗑️ Clear", key="btn_clr_ppl", use_container_width=True):
         st.session_state['ppl_selection'] = []
+        st.session_state['ppl_filter'] = [] # FORCE UPDATE WIDGET KEY
         st.rerun()
     selected_people = st.sidebar.multiselect(
         "People",
@@ -454,9 +456,11 @@ if not df_history.empty:
     col_cat1, col_cat2 = st.sidebar.columns(2)
     if col_cat1.button("✅ All", key="btn_all_cat", use_container_width=True):
         st.session_state['cat_selection'] = available_cats
+        st.session_state['cat_filter'] = available_cats # FORCE UPDATE WIDGET KEY
         st.rerun()
     if col_cat2.button("🗑️ Clear", key="btn_clr_cat", use_container_width=True):
         st.session_state['cat_selection'] = []
+        st.session_state['cat_filter'] = [] # FORCE UPDATE WIDGET KEY
         st.rerun()
     selected_categories = st.sidebar.multiselect(
         "Categories",
@@ -472,9 +476,11 @@ if not df_history.empty:
     col_sub1, col_sub2 = st.sidebar.columns(2)
     if col_sub1.button("✅ All", key="btn_all_sub", use_container_width=True):
         st.session_state['sub_selection'] = available_subcats
+        st.session_state['sub_filter'] = available_subcats # FORCE UPDATE WIDGET KEY
         st.rerun()
     if col_sub2.button("🗑️ Clear", key="btn_clr_sub", use_container_width=True):
         st.session_state['sub_selection'] = []
+        st.session_state['sub_filter'] = [] # FORCE UPDATE WIDGET KEY
         st.rerun()
     selected_subcats = st.sidebar.multiselect(
         "Sub-Categories",
@@ -490,9 +496,11 @@ if not df_history.empty:
     col_src1, col_src2 = st.sidebar.columns(2)
     if col_src1.button("✅ All", key="btn_all_src", use_container_width=True):
         st.session_state['src_selection'] = all_sources_list
+        st.session_state['src_filter'] = all_sources_list # FORCE UPDATE WIDGET KEY
         st.rerun()
     if col_src2.button("🗑️ Clear", key="btn_clr_src", use_container_width=True):
         st.session_state['src_selection'] = []
+        st.session_state['src_filter'] = [] # FORCE UPDATE WIDGET KEY
         st.rerun()
     selected_sources = st.sidebar.multiselect(
         "Source",
