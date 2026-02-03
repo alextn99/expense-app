@@ -1016,12 +1016,11 @@ if not df_history.empty and start_date and end_date:
                         delete_expenses(ids_to_delete)
                         st.session_state['confirm_delete_selected'] = False
                         st.session_state['rows_to_delete'] = None
+                        # CLEAR THE CACHED EDITOR STATE
+                        if 'transaction_editor' in st.session_state:
+                            del st.session_state['transaction_editor']
                         st.success(f"🗑️ Moved {len(ids_to_delete)} items to Recycle Bin!")
                         st.rerun()
-                if col_confirm2.button("❌ Cancel", key="confirm_del_no", use_container_width=True):
-                    st.session_state['confirm_delete_selected'] = False
-                    st.session_state['rows_to_delete'] = None
-                    st.rerun()
             else:
                 st.session_state['confirm_delete_selected'] = False
 
