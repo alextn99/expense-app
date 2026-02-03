@@ -18,10 +18,10 @@ DEFAULT_SUBCATS = [
 DEFAULT_PEOPLE = ['Family', 'Partner', 'Business']
 
 DEFAULT_RULES = {
-    "uber": {"category": "Transport", "subcategory": "Uber", "person": "Family"}, 
-    "starbucks": {"category": "Dining", "subcategory": "Coffee", "person": "Family"},
-    "netflix": {"category": "Entertainment", "subcategory": "Subscription", "person": "Family"},
-    "taobao": {"category": "Shopping", "subcategory": "Online Shopping", "person": "Family"}
+    "uber": {"name": "Uber Ride", "category": "Transport", "subcategory": "Uber", "person": "Family"}, 
+    "starbucks": {"name": "Starbucks Coffee", "category": "Dining", "subcategory": "Coffee", "person": "Family"},
+    "netflix": {"name": "Netflix Subscription", "category": "Entertainment", "subcategory": "Subscription", "person": "Family"},
+    "taobao": {"name": "Taobao Purchase", "category": "Shopping", "subcategory": "Online Shopping", "person": "Family"}
 }
 
 st.set_page_config(page_title="Cloud Expense Tracker", layout="wide", page_icon="💳")
@@ -64,7 +64,6 @@ if not check_password():
 # ============================================
 current_user = st.session_state["current_user"]
 
-# Each user has their own Supabase project
 if "supabase" in st.secrets and f"{current_user}_url" in st.secrets["supabase"]:
     sb_url = st.secrets["supabase"][f"{current_user}_url"]
     sb_key = st.secrets["supabase"][f"{current_user}_key"]
@@ -90,14 +89,14 @@ sb = get_supabase_client(sb_url, sb_key)
 # Column mappings: DB (lowercase) <-> App (CamelCase)
 EXP_COLS = {
     'date': 'Date', 'description': 'Description', 'amount': 'Amount',
-    'category': 'Category', 'subcategory': 'SubCategory', 'source': 'Source',
-    'person': 'Person', 'locked': 'Locked'
+    'name': 'Name', 'category': 'Category', 'subcategory': 'SubCategory', 
+    'source': 'Source', 'person': 'Person', 'locked': 'Locked'
 }
 EXP_COLS_REV = {v: k for k, v in EXP_COLS.items()}
 
 RULES_COLS = {
-    'keyword': 'Keyword', 'category': 'Category',
-    'subcategory': 'SubCategory', 'person': 'Person'
+    'keyword': 'Keyword', 'name': 'Name', 'category': 'Category',
+    'subcategory': 'SubCategory', 'person': 'Person', 'amount': 'Amount'
 }
 RULES_COLS_REV = {v: k for k, v in RULES_COLS.items()}
 
@@ -115,7 +114,7 @@ def prepare_records(df):
                 record[col] = val.strftime('%Y-%m-%d')
             elif isinstance(val, datetime.date):
                 record[col] = val.strftime('%Y-%m-%d')
-            elif hasattr(val, 'item'):  # numpy types → Python native
+            elif hasattr(val, 'item'):
                 record[col] = val.item()
             else:
                 record[col] = val
@@ -140,7 +139,6 @@ def insert_expenses(df):
     df_save = df.rename(columns=EXP_COLS_REV)
     if 'id' in df_save.columns:
         df_save = df_save.drop(columns=['id'])
-    # Remove any non-DB columns
     valid_cols = list(EXP_COLS_REV.values())
     df_save = df_save[[c for c in df_save.columns if c in valid_cols]]
     records = prepare_records(df_save)
@@ -220,18 +218,32 @@ def add_rules(new_rules_df):
         sb.table("rules").upsert(records, on_conflict="keyword").execute()
 
 # --- RULE MATCHING ---
-def get_match(description, rules_df):
+def get_match(description, amount, rules_df):
+    """Match description and optionally exact amount to return name, category, subcategory, person."""
     desc = str(description).lower()
     if rules_df.empty:
-        return None, None, None
+        return None, None, None, None
+    
     rules_sorted = rules_df.copy()
     rules_sorted['_kw_len'] = rules_sorted['Keyword'].str.len()
     rules_sorted = rules_sorted.sort_values('_kw_len', ascending=False)
     
     for _, row in rules_sorted.iterrows():
         if str(row['Keyword']).lower() in desc:
-            return row['Category'], row.get('SubCategory', ''), row.get('Person', 'Family')
-    return None, None, None
+            # Check exact amount if specified in rule
+            rule_amount = row.get('Amount')
+            
+            if pd.notna(rule_amount) and rule_amount is not None:
+                if amount is None or abs(float(amount) - float(rule_amount)) > 0.01:
+                    continue
+            
+            return (
+                row.get('Name', '') if pd.notna(row.get('Name')) else '',
+                row['Category'], 
+                row.get('SubCategory', '') if pd.notna(row.get('SubCategory')) else '', 
+                row.get('Person', 'Family') if pd.notna(row.get('Person')) else 'Family'
+            )
+    return None, None, None, None
 
 # ============================================
 # 4. LOAD ALL DATA
@@ -240,12 +252,10 @@ try:
     df_history = load_expenses()
     df_rules = load_rules()
     
-    # Load reference lists
     loaded_cats = load_list("categories")
     loaded_subcats = load_list("subcategories")
     loaded_people = load_list("people")
     
-    # Seed defaults if empty
     if not loaded_cats:
         save_list("categories", DEFAULT_CATEGORIES)
         loaded_cats = sorted(DEFAULT_CATEGORIES)
@@ -256,9 +266,18 @@ try:
         save_list("people", DEFAULT_PEOPLE)
         loaded_people = sorted(DEFAULT_PEOPLE)
     
-    # Seed default rules if empty
     if df_rules.empty:
-        seed_rules = [{"Keyword": k, "Category": v["category"], "SubCategory": v["subcategory"], "Person": v["person"]} for k, v in DEFAULT_RULES.items()]
+        seed_rules = [
+            {
+                "Keyword": k, 
+                "Name": v["name"],
+                "Category": v["category"], 
+                "SubCategory": v["subcategory"], 
+                "Person": v["person"],
+                "Amount": None
+            } 
+            for k, v in DEFAULT_RULES.items()
+        ]
         df_rules = pd.DataFrame(seed_rules)
         save_rules_full(df_rules)
         df_rules = load_rules()
@@ -272,6 +291,7 @@ except Exception as e:
 # ============================================
 if not df_history.empty:
     df_history['Date'] = pd.to_datetime(df_history['Date'], errors='coerce')
+    df_history['Name'] = df_history['Name'].fillna('') if 'Name' in df_history.columns else ''
     df_history['SubCategory'] = df_history['SubCategory'].fillna('')
     df_history['Person'] = df_history['Person'].fillna('Family').replace('', 'Family')
     df_history['Category'] = df_history['Category'].fillna('Uncategorized').replace('', 'Uncategorized')
@@ -280,6 +300,14 @@ if not df_history.empty:
         df_history['Locked'] = False
     else:
         df_history['Locked'] = df_history['Locked'].fillna(False).astype(bool)
+    if 'Name' not in df_history.columns:
+        df_history['Name'] = ''
+
+if not df_rules.empty:
+    if 'Name' not in df_rules.columns:
+        df_rules['Name'] = ''
+    if 'Amount' not in df_rules.columns:
+        df_rules['Amount'] = None
 
 # ============================================
 # 6. SESSION STATE INIT
@@ -311,9 +339,10 @@ if not df_history.empty:
     max_date_avail = df_history['Date'].max().date()
     start_date, end_date = st.sidebar.date_input("Period", [min_date_avail, max_date_avail])
     
-    search_term = st.sidebar.text_input("Search Description", placeholder="e.g. Starbucks, Uber")
+    # Search with toggle for Name/Description/Both
+    search_field = st.sidebar.radio("Search in:", ["Name", "Description", "Both"], horizontal=True, index=2)
+    search_term = st.sidebar.text_input("Search", placeholder="e.g. Starbucks, Uber")
 
-    # Smart lists: combine saved settings + data found in DB
     data_people = df_history['Person'].dropna().unique().tolist()
     available_people = sorted(list(set(st.session_state['people'] + data_people)))
     
@@ -365,6 +394,7 @@ else:
     start_date, end_date = None, None
     selected_people, selected_categories, selected_subcats, selected_sources = [], [], [], []
     search_term = ""
+    search_field = "Both"
     available_cats = st.session_state['categories']
     available_subcats = st.session_state['subcategories']
     available_people = st.session_state['people']
@@ -403,11 +433,17 @@ with st.sidebar.expander("👥 Manage People", expanded=False):
         st.rerun()
 
 with st.sidebar.expander("📝 Manage Rules", expanded=False):
-    sort_option_rules = st.radio("Sort Rules by:", ["Keyword", "Category", "SubCategory"], horizontal=True, key="rule_sort")
+    sort_option_rules = st.radio("Sort Rules by:", ["Keyword", "Name", "Category", "SubCategory"], horizontal=True, key="rule_sort")
     rules_display = df_rules.drop(columns=['id'], errors='ignore').copy()
+    
+    for col in ['Keyword', 'Name', 'Category', 'SubCategory', 'Person', 'Amount']:
+        if col not in rules_display.columns:
+            rules_display[col] = None if col == 'Amount' else ''
     
     if sort_option_rules == "Keyword": 
         rules_display = rules_display.sort_values(by="Keyword")
+    elif sort_option_rules == "Name": 
+        rules_display = rules_display.sort_values(by=["Name", "Keyword"])
     elif sort_option_rules == "Category": 
         rules_display = rules_display.sort_values(by=["Category", "Keyword"])
     elif sort_option_rules == "SubCategory": 
@@ -417,9 +453,11 @@ with st.sidebar.expander("📝 Manage Rules", expanded=False):
         rules_display, num_rows="dynamic", use_container_width=True, hide_index=True, key="rule_editor",
         column_config={
             "Keyword": st.column_config.TextColumn("Keyword", disabled=False),
+            "Name": st.column_config.TextColumn("Name", help="Friendly name to assign"),
             "Category": st.column_config.SelectboxColumn("Category", options=st.session_state['categories'], required=True),
             "SubCategory": st.column_config.SelectboxColumn("SubCategory", options=st.session_state['subcategories'], required=False),
-            "Person": st.column_config.SelectboxColumn("Person", options=st.session_state['people'], required=True)
+            "Person": st.column_config.SelectboxColumn("Person", options=st.session_state['people'], required=True),
+            "Amount": st.column_config.NumberColumn("Amount", help="Optional: Only match if amount equals this exactly", format="%.2f")
         }
     )
     if st.button("💾 Save Rule Changes"):
@@ -433,16 +471,26 @@ with st.sidebar.expander("📝 Manage Rules", expanded=False):
 
 with st.sidebar.expander("🧠 Teach the App", expanded=False):
     new_keyword = st.text_input("Keyword (e.g. Netflix):").lower()
+    new_name = st.text_input("Name (e.g. Netflix Subscription):")
     col_t1, col_t2 = st.columns(2)
     new_cat_rule = col_t1.selectbox("Category:", st.session_state['categories'], key="teach_cat")
     new_sub_rule = col_t2.selectbox("Sub-Category:", [""] + st.session_state['subcategories'], key="teach_sub")
     new_person_rule = st.selectbox("Person:", st.session_state['people'], key="teach_ppl")
     
+    new_amount = st.number_input("Exact Amount (optional)", value=None, step=0.01, key="teach_amt", help="Leave blank to match any amount")
+    
     if st.button("➕ Add Rule"):
         if new_keyword:
-            new_rule_row = pd.DataFrame([{"Keyword": new_keyword, "Category": new_cat_rule, "SubCategory": new_sub_rule, "Person": new_person_rule}])
+            new_rule_row = pd.DataFrame([{
+                "Keyword": new_keyword, 
+                "Name": new_name,
+                "Category": new_cat_rule, 
+                "SubCategory": new_sub_rule, 
+                "Person": new_person_rule,
+                "Amount": new_amount
+            }])
             add_rules(new_rule_row)
-            st.success(f"Saved! '{new_keyword}' -> {new_cat_rule}")
+            st.success(f"Saved! '{new_keyword}' -> {new_name} ({new_cat_rule})")
             st.rerun()
     
     if st.button("🧠 Auto-Learn Rules from History"):
@@ -455,9 +503,11 @@ with st.sidebar.expander("🧠 Teach the App", expanded=False):
                 if row['Category'] != 'Uncategorized' and desc_key not in existing_keywords:
                     new_rules_list.append({
                         "Keyword": desc_key,
+                        "Name": row.get('Name', '') if pd.notna(row.get('Name')) else '',
                         "Category": row['Category'],
                         "SubCategory": row.get('SubCategory', ''),
-                        "Person": row['Person']
+                        "Person": row['Person'],
+                        "Amount": None
                     })
                     existing_keywords.append(desc_key)
             
@@ -472,14 +522,16 @@ with st.sidebar.expander("🧠 Teach the App", expanded=False):
             for idx, row in df_history.iterrows():
                 if row.get('Locked', False):
                     continue
-                cat, sub, person = get_match(row['Description'], df_rules)
+                name, cat, sub, person = get_match(row['Description'], row['Amount'], df_rules)
+                if name:
+                    df_history.at[idx, 'Name'] = name
                 if cat:
                     df_history.at[idx, 'Category'] = cat
                 if sub:
                     df_history.at[idx, 'SubCategory'] = sub
                 if person:
                     df_history.at[idx, 'Person'] = person
-                if cat or sub or person:
+                if name or cat or sub or person:
                     changed_ids.append(idx)
             
             if changed_ids:
@@ -492,7 +544,6 @@ st.sidebar.markdown("---")
 # === IMPORT DATA (with Manual Source) ===
 st.sidebar.header("📤 Import Data")
 
-# Manual source input - always visible
 manual_source = st.sidebar.text_input("Source Name", placeholder="e.g. HSBC Credit, Chase Debit", key="source_input")
 
 input_method = st.sidebar.radio("Input Method:", ["Upload File", "Paste Text"])
@@ -527,6 +578,7 @@ if not new_data.empty:
         amt_col = next((c for c in new_data.columns if 'amount' in c or 'debit' in c or 'value' in c or 'hkd' in c), None)
         src_col = next((c for c in new_data.columns if 'source' in c), None)
         
+        name_col_in = next((c for c in new_data.columns if c == 'name'), None)
         cat_col_in = next((c for c in new_data.columns if 'category' in c and 'sub' not in c), None)
         sub_col_in = next((c for c in new_data.columns if 'sub' in c), None)
         person_col_in = next((c for c in new_data.columns if 'person' in c), None)
@@ -535,7 +587,6 @@ if not new_data.empty:
             new_data[amt_col] = new_data[amt_col].astype(str).str.upper().str.replace('CR','').str.replace('DR','').str.replace(',','').str.replace('$','')
             new_data[amt_col] = pd.to_numeric(new_data[amt_col], errors='coerce')
             
-            # Source priority: file column > manual input > default
             if src_col:
                 file_source = new_data[src_col]
             elif manual_source:
@@ -548,6 +599,7 @@ if not new_data.empty:
                 'Description': new_data[desc_col],
                 'Amount': new_data[amt_col],
                 'Source': file_source,
+                'Name': new_data[name_col_in] if name_col_in else '',
                 'Category': new_data[cat_col_in] if cat_col_in else 'Uncategorized',
                 'SubCategory': new_data[sub_col_in] if sub_col_in else '',
                 'Person': new_data[person_col_in] if person_col_in else 'Family',
@@ -555,22 +607,24 @@ if not new_data.empty:
             })
             clean_new_data = clean_new_data.dropna(subset=['Date', 'Amount'])
             
-            # Apply rules to uncategorized
             def apply_rules_smart(row):
-                if row['Category'] != 'Uncategorized' and pd.notna(row['Category']): 
+                if row['Category'] != 'Uncategorized' and pd.notna(row['Category']) and row.get('Name', '') != '': 
                     return row
-                cat, sub, person = get_match(row['Description'], df_rules)
-                if cat: 
+                
+                name, cat, sub, person = get_match(row['Description'], row['Amount'], df_rules)
+                
+                if name and (row.get('Name', '') == '' or pd.isna(row.get('Name', ''))):
+                    row['Name'] = name
+                if cat and (row['Category'] == 'Uncategorized' or pd.isna(row['Category'])): 
                     row['Category'] = cat
-                if sub: 
+                if sub and (row.get('SubCategory', '') == '' or pd.isna(row.get('SubCategory', ''))): 
                     row['SubCategory'] = sub
-                if person: 
+                if person and (row.get('Person', '') == '' or pd.isna(row.get('Person', ''))): 
                     row['Person'] = person
                 return row
             
             clean_new_data = clean_new_data.apply(apply_rules_smart, axis=1)
             
-            # Deduplicate against existing data
             existing = load_expenses()
             if not existing.empty:
                 existing['_key'] = existing['Date'].astype(str) + '|' + existing['Description'].astype(str) + '|' + existing['Amount'].astype(str)
@@ -634,7 +688,15 @@ if not df_history.empty and start_date and end_date:
         keywords = [k.strip() for k in search_term.replace(',', ' ').split() if k.strip()]
         if keywords:
             pattern = '|'.join(keywords)
-            mask = mask & df_history['Description'].astype(str).str.contains(pattern, case=False, na=False)
+            if search_field == "Name":
+                mask = mask & df_history['Name'].astype(str).str.contains(pattern, case=False, na=False)
+            elif search_field == "Description":
+                mask = mask & df_history['Description'].astype(str).str.contains(pattern, case=False, na=False)
+            else:
+                mask = mask & (
+                    df_history['Name'].astype(str).str.contains(pattern, case=False, na=False) |
+                    df_history['Description'].astype(str).str.contains(pattern, case=False, na=False)
+                )
 
     filtered_df = df_history.loc[mask].copy()
 
@@ -720,6 +782,8 @@ if not df_history.empty and start_date and end_date:
             "Date (Oldest)", 
             "Amount (Lowest first - Big Spends)", 
             "Amount (Highest first - Income)", 
+            "Name (A-Z)",
+            "Name (Z-A)",
             "Description (A-Z)", 
             "Description (Z-A)"
         ]
@@ -743,6 +807,10 @@ if not df_history.empty and start_date and end_date:
             filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=True)
         elif sort_option == "Amount (Highest first - Income)":
             filtered_df_display = filtered_df_display.sort_values(by="Amount", ascending=False)
+        elif sort_option == "Name (A-Z)":
+            filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=True)
+        elif sort_option == "Name (Z-A)":
+            filtered_df_display = filtered_df_display.sort_values(by="Name", ascending=False)
         elif sort_option == "Description (A-Z)":
             filtered_df_display = filtered_df_display.sort_values(by="Description", ascending=True)
         elif sort_option == "Description (Z-A)":
@@ -750,20 +818,26 @@ if not df_history.empty and start_date and end_date:
 
         filtered_df_display['Date'] = filtered_df_display['Date'].dt.date
         
-        # Add Create Rule column (UI only, not stored in DB)
+        # Add UI-only columns for rule creation
         filtered_df_display['Create Rule'] = False
+        filtered_df_display['Include Amt'] = False
         filtered_df_display['Locked'] = filtered_df_display['Locked'].fillna(False).astype(bool)
         
-        # Reorder columns (id is hidden via column_config)
-        display_cols = ['id', 'Date', 'Description', 'Amount', 'Category', 'SubCategory', 'Person', 'Source', 'Locked', 'Create Rule']
+        if 'Name' not in filtered_df_display.columns:
+            filtered_df_display['Name'] = ''
+        
+        # Reorder columns
+        display_cols = ['id', 'Date', 'Name', 'Description', 'Amount', 'Category', 'SubCategory', 'Person', 'Source', 'Locked', 'Create Rule', 'Include Amt']
         filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
         
         edited_df = st.data_editor(
             filtered_df_display,
             column_config={
-                "id": None,  # Hidden but preserved
+                "id": None,
                 "Locked": st.column_config.CheckboxColumn("🔒", width="small"),
-                "Create Rule": st.column_config.CheckboxColumn("➕ Rule", width="small", help="Check this box and click 'Save Changes' to create a permanent rule for this item."),
+                "Create Rule": st.column_config.CheckboxColumn("➕ Rule", width="small", help="Create a rule from this transaction"),
+                "Include Amt": st.column_config.CheckboxColumn("💲 Amt", width="small", help="Include exact amount in the rule"),
+                "Name": st.column_config.TextColumn("Name", help="Friendly name for this transaction"),
                 "Category": st.column_config.SelectboxColumn("Category", options=available_cats, required=True),
                 "SubCategory": st.column_config.SelectboxColumn("Sub-Category", options=available_subcats, required=False),
                 "Person": st.column_config.SelectboxColumn("Person", options=available_people, required=True),
@@ -795,11 +869,22 @@ if not df_history.empty and start_date and end_date:
             for idx, row in edited_df.iterrows():
                 if row.get('Create Rule', False):
                     desc_text = str(row['Description']).lower().strip()
+                    name = row.get('Name', '')
                     cat = row['Category']
                     sub = row.get('SubCategory', '')
                     person = row.get('Person', 'Family')
                     
-                    new_rule = pd.DataFrame([{"Keyword": desc_text, "Category": cat, "SubCategory": sub, "Person": person}])
+                    # Include amount only if checkbox is checked
+                    rule_amount = row['Amount'] if row.get('Include Amt', False) else None
+                    
+                    new_rule = pd.DataFrame([{
+                        "Keyword": desc_text, 
+                        "Name": name,
+                        "Category": cat, 
+                        "SubCategory": sub, 
+                        "Person": person,
+                        "Amount": rule_amount
+                    }])
                     add_rules(new_rule)
                     rules_created += 1
                     
@@ -814,6 +899,7 @@ if not df_history.empty and start_date and end_date:
                         new_subs_added = True
                     
                     edited_df.at[idx, 'Create Rule'] = False
+                    edited_df.at[idx, 'Include Amt'] = False
                     edited_df.at[idx, 'Locked'] = True
 
             if rules_created > 0:
@@ -824,9 +910,8 @@ if not df_history.empty and start_date and end_date:
                 st.toast(f"✅ Created {rules_created} new rules!", icon="🧠")
 
             # 3. SAVE DATA UPDATES
-            save_df = edited_df.drop(columns=['Create Rule'], errors='ignore')
+            save_df = edited_df.drop(columns=['Create Rule', 'Include Amt'], errors='ignore')
             
-            # Separate existing rows (update) from new rows (insert)
             existing_rows = save_df[save_df['id'].notna()].copy()
             new_rows = save_df[save_df['id'].isna()].copy()
             
