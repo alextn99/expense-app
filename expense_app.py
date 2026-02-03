@@ -921,25 +921,8 @@ if not df_history.empty and start_date and end_date:
         ]
     )
     
-    # Row 2: Lock/Unlock buttons
-    st.markdown("**Lock Controls:**")
-    col_lock1, col_lock2, col_lock3, col_lock4 = st.columns(4)
-    
-    if col_lock1.button("🔒 Lock All Shown", use_container_width=True):
-        if not filtered_df.empty:
-            filtered_df['Locked'] = True
-            upsert_expenses(filtered_df)
-            st.success("All shown transactions locked!")
-            st.rerun()
-    
-    if col_lock2.button("🔓 Unlock All Shown", use_container_width=True):
-        if not filtered_df.empty:
-            filtered_df['Locked'] = False
-            upsert_expenses(filtered_df)
-            st.success("All shown transactions unlocked!")
-            st.rerun()
 
-    # Row 3: Select All buttons for checkboxes
+    # Row 2: Select All buttons for checkboxes
     st.markdown("**Bulk Select (applies to table below):**")
     col_sel1, col_sel2, col_sel3, col_sel4, col_sel5, col_sel6 = st.columns(6)
 
