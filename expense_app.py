@@ -1281,160 +1281,160 @@ if not df_history.empty and start_date and end_date:
             else:
                 st.session_state['confirm_delete_selected'] = False
 
-if save_clicked:
-    rules_created = 0
-    new_cats_added = False
-    new_subs_added = False
-    new_people_added = False
-    rule_errors = []
-    
-    # === DETECT WHICH ROWS ACTUALLY CHANGED ===
-    original_df = filtered_df_display.copy()
-    
-    for idx, row in edited_df.iterrows():
-        if row.get('Delete', False):
-            continue
-        
-        # Check if this row was actually modified
-        row_changed = False
-        create_rule = row.get('Create Rule', False)
-        
-        # Find original row by id
-        row_id = row.get('id')
-        if row_id is not None and not pd.isna(row_id):
-            orig_matches = original_df[original_df['id'] == row_id]
-            if not orig_matches.empty:
-                orig_row = orig_matches.iloc[0]
-                if (row.get('Category') != orig_row.get('Category') or
-                    row.get('SubCategory') != orig_row.get('SubCategory') or
-                    row.get('Person') != orig_row.get('Person') or
-                    row.get('Name') != orig_row.get('Name') or
-                    row.get('Locked') != orig_row.get('Locked')):
-                    row_changed = True
-            else:
-                row_changed = True
-        else:
-            row_changed = True
-        
-        # Only auto-add if row changed OR creating a rule
-        if row_changed or create_rule:
-            cat = row.get('Category')
-            sub = row.get('SubCategory', '')
-            person = row.get('Person', 'Family')
-            
-            if cat and not pd.isna(cat) and cat != '':
-                if cat not in st.session_state['categories']:
-                    st.session_state['categories'].append(cat)
-                    st.session_state['categories'].sort()
-                    new_cats_added = True
-            
-            if sub and not pd.isna(sub) and sub != '':
-                if sub not in st.session_state['subcategories']:
-                    st.session_state['subcategories'].append(sub)
-                    st.session_state['subcategories'].sort()
-                    new_subs_added = True
-            
-            if person and not pd.isna(person) and person != '':
-                if person not in st.session_state['people']:
-                    st.session_state['people'].append(person)
-                    st.session_state['people'].sort()
-                    new_people_added = True
-    
-    # Save updated lists
-    if new_cats_added:
-        save_list("categories", st.session_state['categories'])
-        st.toast("✅ New categories added!", icon="📂")
-    if new_subs_added:
-        save_list("subcategories", st.session_state['subcategories'])
-        st.toast("✅ New sub-categories added!", icon="🏷️")
-    if new_people_added:
-        save_list("people", st.session_state['people'])
-        st.toast("✅ New people added!", icon="👥")
-    
-    # === CREATE RULES (only for checked rows) ===
-    for idx, row in edited_df.iterrows():
-        if row.get('Delete', False):
-            continue
-            
-        if row.get('Create Rule', False):
-            desc_text = str(row['Description']).lower().strip()
-            name = row.get('Name', '')
-            cat = row.get('Category')
-            sub = row.get('SubCategory', '')
-            person = row.get('Person', 'Family')
-            
-            if not desc_text:
-                rule_errors.append("Empty description - skipped")
-                continue
-            
-            if cat is None or pd.isna(cat) or cat == '':
-                cat = 'Uncategorized'
-            
-            if name is None or pd.isna(name):
-                name = ''
-            if sub is None or pd.isna(sub):
-                sub = ''
-            if person is None or pd.isna(person) or person == '':
-                person = 'Family'
-            
-            rule_amount = row['Amount'] if row.get('Include Amt', False) else None
-            
-            try:
-                new_rule = pd.DataFrame([{
-                    "Keyword": str(desc_text), 
-                    "Name": str(name), 
-                    "Category": str(cat), 
-                    "SubCategory": str(sub), 
-                    "Person": str(person), 
-                    "Amount": rule_amount
-                }])
-                add_rules(new_rule)
-                rules_created += 1
-                edited_df.at[idx, 'Create Rule'] = False
-                edited_df.at[idx, 'Include Amt'] = False
-                edited_df.at[idx, 'Locked'] = True
-            except Exception as e:
-                rule_errors.append(f"'{desc_text[:30]}': {str(e)}")
-
-    if rule_errors:
-        st.error(f"⚠️ {len(rule_errors)} rule(s) failed:")
-        for err in rule_errors[:5]:
-            st.warning(err)
-
-    if rules_created > 0:
-        st.toast(f"✅ Created {rules_created} new rules!", icon="🧠")
-
-    # === SAVE ALL TRANSACTIONS ===
-    try:
-        save_df = edited_df[edited_df['Delete'] == False].drop(
-            columns=['Delete', 'Create Rule', 'Include Amt'], errors='ignore'
-        )
-        
-        save_df['Category'] = save_df['Category'].fillna('Uncategorized').replace('', 'Uncategorized')
-        save_df['SubCategory'] = save_df['SubCategory'].fillna('')
-        save_df['Person'] = save_df['Person'].fillna('Family').replace('', 'Family')
-        save_df['Name'] = save_df['Name'].fillna('')
-        
-        existing_rows = save_df[save_df['id'].notna()].copy()
-        new_rows = save_df[save_df['id'].isna()].copy()
-        
-        if not existing_rows.empty:
-            upsert_expenses(existing_rows)
-        if not new_rows.empty:
-            insert_expenses(new_rows)
-        
-        if 'transaction_editor' in st.session_state:
-            del st.session_state['transaction_editor']
-        
-        if 'bulk_actions' in st.session_state:
-            del st.session_state['bulk_actions']
-        
-        st.success("✅ Changes Saved!")
-        st.rerun()
-        
-    except Exception as e:
-        st.error(f"❌ Error saving transactions: {e}")
-        st.exception(e)
+	if save_clicked:
+		rules_created = 0
+		new_cats_added = False
+		new_subs_added = False
+		new_people_added = False
+		rule_errors = []
+		
+		# === DETECT WHICH ROWS ACTUALLY CHANGED ===
+		original_df = filtered_df_display.copy()
+		
+		for idx, row in edited_df.iterrows():
+			if row.get('Delete', False):
+				continue
+			
+			# Check if this row was actually modified
+			row_changed = False
+			create_rule = row.get('Create Rule', False)
+			
+			# Find original row by id
+			row_id = row.get('id')
+			if row_id is not None and not pd.isna(row_id):
+				orig_matches = original_df[original_df['id'] == row_id]
+				if not orig_matches.empty:
+					orig_row = orig_matches.iloc[0]
+					if (row.get('Category') != orig_row.get('Category') or
+						row.get('SubCategory') != orig_row.get('SubCategory') or
+						row.get('Person') != orig_row.get('Person') or
+						row.get('Name') != orig_row.get('Name') or
+						row.get('Locked') != orig_row.get('Locked')):
+						row_changed = True
+				else:
+					row_changed = True
+			else:
+				row_changed = True
+			
+			# Only auto-add if row changed OR creating a rule
+			if row_changed or create_rule:
+				cat = row.get('Category')
+				sub = row.get('SubCategory', '')
+				person = row.get('Person', 'Family')
+				
+				if cat and not pd.isna(cat) and cat != '':
+					if cat not in st.session_state['categories']:
+						st.session_state['categories'].append(cat)
+						st.session_state['categories'].sort()
+						new_cats_added = True
+				
+				if sub and not pd.isna(sub) and sub != '':
+					if sub not in st.session_state['subcategories']:
+						st.session_state['subcategories'].append(sub)
+						st.session_state['subcategories'].sort()
+						new_subs_added = True
+				
+				if person and not pd.isna(person) and person != '':
+					if person not in st.session_state['people']:
+						st.session_state['people'].append(person)
+						st.session_state['people'].sort()
+						new_people_added = True
+		
+		# Save updated lists
+		if new_cats_added:
+			save_list("categories", st.session_state['categories'])
+			st.toast("✅ New categories added!", icon="📂")
+		if new_subs_added:
+			save_list("subcategories", st.session_state['subcategories'])
+			st.toast("✅ New sub-categories added!", icon="🏷️")
+		if new_people_added:
+			save_list("people", st.session_state['people'])
+			st.toast("✅ New people added!", icon="👥")
+		
+		# === CREATE RULES (only for checked rows) ===
+		for idx, row in edited_df.iterrows():
+			if row.get('Delete', False):
+				continue
+			
+			if row.get('Create Rule', False):
+				desc_text = str(row['Description']).lower().strip()
+				name = row.get('Name', '')
+				cat = row.get('Category')
+				sub = row.get('SubCategory', '')
+				person = row.get('Person', 'Family')
+				
+				if not desc_text:
+					rule_errors.append("Empty description - skipped")
+					continue
+				
+				if cat is None or pd.isna(cat) or cat == '':
+					cat = 'Uncategorized'
+				
+				if name is None or pd.isna(name):
+					name = ''
+				if sub is None or pd.isna(sub):
+					sub = ''
+				if person is None or pd.isna(person) or person == '':
+					person = 'Family'
+				
+				rule_amount = row['Amount'] if row.get('Include Amt', False) else None
+				
+				try:
+					new_rule = pd.DataFrame([{
+						"Keyword": str(desc_text),
+						"Name": str(name),
+						"Category": str(cat),
+						"SubCategory": str(sub),
+						"Person": str(person),
+						"Amount": rule_amount
+					}])
+					add_rules(new_rule)
+					rules_created += 1
+					edited_df.at[idx, 'Create Rule'] = False
+					edited_df.at[idx, 'Include Amt'] = False
+					edited_df.at[idx, 'Locked'] = True
+				except Exception as e:
+					rule_errors.append(f"'{desc_text[:30]}': {str(e)}")
+		
+		if rule_errors:
+			st.error(f"⚠️ {len(rule_errors)} rule(s) failed:")
+			for err in rule_errors[:5]:
+				st.warning(err)
+		
+		if rules_created > 0:
+			st.toast(f"✅ Created {rules_created} new rules!", icon="🧠")
+		
+		# === SAVE ALL TRANSACTIONS ===
+		try:
+			save_df = edited_df[edited_df['Delete'] == False].drop(
+				columns=['Delete', 'Create Rule', 'Include Amt'], errors='ignore'
+			)
+			
+			save_df['Category'] = save_df['Category'].fillna('Uncategorized').replace('', 'Uncategorized')
+			save_df['SubCategory'] = save_df['SubCategory'].fillna('')
+			save_df['Person'] = save_df['Person'].fillna('Family').replace('', 'Family')
+			save_df['Name'] = save_df['Name'].fillna('')
+			
+			existing_rows = save_df[save_df['id'].notna()].copy()
+			new_rows = save_df[save_df['id'].isna()].copy()
+			
+			if not existing_rows.empty:
+				upsert_expenses(existing_rows)
+			if not new_rows.empty:
+				insert_expenses(new_rows)
+			
+			if 'transaction_editor' in st.session_state:
+				del st.session_state['transaction_editor']
+			
+			if 'bulk_actions' in st.session_state:
+				del st.session_state['bulk_actions']
+			
+			st.success("✅ Changes Saved!")
+			st.rerun()
+		
+		except Exception as e:
+			st.error(f"❌ Error saving transactions: {e}")
+			st.exception(e)
 
             if rules_created > 0:
                 if new_cats_added:
