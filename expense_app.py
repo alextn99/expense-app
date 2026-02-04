@@ -168,10 +168,14 @@ if not db_connected:
     st.stop()
 
 @st.cache_resource
-def get_supabase_client(_url, _key):
+def get_supabase_client(_url, _key, _user):
+    """
+    Create a Supabase client for a specific user.
+    _user parameter ensures each user gets their own cached client.
+    """
     return create_client(_url, _key)
 
-sb = get_supabase_client(sb_url, sb_key)
+sb = get_supabase_client(sb_url, sb_key, current_user)
 
 # ============================================
 # 3. DATA ACCESS FUNCTIONS
