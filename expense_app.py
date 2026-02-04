@@ -1058,6 +1058,51 @@ if not df_history.empty and start_date and end_date:
 
     st.markdown("---")
     st.subheader("📝 Transaction Editor")
+
+    # === QUICK ADD CATEGORY ===
+    with st.expander("➕ Quick Add Category/SubCategory", expanded=False):
+        col_qa1, col_qa2, col_qa3 = st.columns([2, 2, 1])
+    
+        with col_qa1:
+            new_cat_quick = st.text_input("New Category:", placeholder="e.g. Healthcare", key="quick_cat")
+        with col_qa2:
+            new_sub_quick = st.text_input("New Sub-Category:", placeholder="e.g. Pharmacy", key="quick_sub")
+        with col_qa3:
+            st.markdown("<br>", unsafe_allow_html=True)  # Spacing
+            if st.button("➕ Add", key="quick_add_btn", use_container_width=True):
+                added = []
+                if new_cat_quick and new_cat_quick.strip():
+                    cat_clean = new_cat_quick.strip()
+                    if cat_clean not in st.session_state['categories']:
+                        st.session_state['categories'].append(cat_clean)
+                        st.session_state['categories'].sort()
+                        save_list("categories", st.session_state['categories'])
+                        added.append(f"Category: {cat_clean}")
+            
+                if new_sub_quick and new_sub_quick.strip():
+                    sub_clean = new_sub_quick.strip()
+                    if sub_clean not in st.session_state['subcategories']:
+                        st.session_state['subcategories'].append(sub_clean)
+                        st.session_state['subcategories'].sort()
+                        save_list("subcategories", st.session_state['subcategories'])
+                        added.append(f"Sub-Category: {sub_clean}")
+            
+                if added:
+                    st.success(f"✅ Added: {', '.join(added)}")
+                    st.rerun()
+                else:
+                    st.warning("Nothing new to add (already exists or empty)")
+
+    # Show current options for reference
+    with st.expander("📋 Current Categories & Sub-Categories", expanded=False):
+        col_list1, col_list2 = st.columns(2)
+        with col_list1:
+            st.markdown("**Categories:**")
+            st.caption(", ".join(sorted(available_cats)))
+        with col_list2:
+            st.markdown("**Sub-Categories:**")
+            st.caption(", ".join(sorted(available_subcats)))
+# === END OF QUICK ADD CATEGORY === #
     
     sort_option = st.selectbox("Sort By:", ["Date (Newest)", "Date (Oldest)", "Amount (Lowest first - Big Spends)", "Amount (Highest first - Income)", "Name (A-Z)", "Name (Z-A)", "Description (A-Z)", "Description (Z-A)", "Native (Click Headers to Sort)"])
 
