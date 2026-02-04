@@ -168,10 +168,10 @@ if not db_connected:
     st.stop()
 
 @st.cache_resource
-def get_supabase_client(_url, _key):
-    return create_client(_url, _key)
+def get_supabase_client(url, key, user):
+    return create_client(url, key)
 
-sb = get_supabase_client(sb_url, sb_key)
+sb = get_supabase_client(sb_url, sb_key, sb_user)
 
 # ============================================
 # 3. DATA ACCESS FUNCTIONS
