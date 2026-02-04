@@ -168,10 +168,14 @@ if not db_connected:
     st.stop()
 
 @st.cache_resource
-def get_supabase_client(_url, _key):
+def get_supabase_client(_url, _key, _user):
+    """
+    Create a Supabase client for a specific user.
+    _user parameter ensures each user gets their own cached client.
+    """
     return create_client(_url, _key)
 
-sb = get_supabase_client(sb_url, sb_key)
+sb = get_supabase_client(sb_url, sb_key, current_user)
 
 # ============================================
 # 3. DATA ACCESS FUNCTIONS
@@ -392,6 +396,7 @@ try:
     
     is_fresh_db = df_history.empty or len(df_history) == 0
     
+    # Handle categories
     if loaded_cats is None:
         loaded_cats = st.session_state.get('categories', sorted(DEFAULT_CATEGORIES))
     elif not loaded_cats:
@@ -399,8 +404,9 @@ try:
             save_list("categories", DEFAULT_CATEGORIES)
             loaded_cats = sorted(DEFAULT_CATEGORIES)
         else:
-            loaded_cats = sorted(DEFAULT_CATEGORIES)
+            loaded_cats = st.session_state.get('categories', sorted(DEFAULT_CATEGORIES))
     
+    # Handle subcategories
     if loaded_subcats is None:
         loaded_subcats = st.session_state.get('subcategories', sorted(DEFAULT_SUBCATS))
     elif not loaded_subcats:
@@ -408,8 +414,9 @@ try:
             save_list("subcategories", DEFAULT_SUBCATS)
             loaded_subcats = sorted(DEFAULT_SUBCATS)
         else:
-            loaded_subcats = sorted(DEFAULT_SUBCATS)
+            loaded_subcats = st.session_state.get('subcategories', sorted(DEFAULT_SUBCATS))
     
+    # Handle people
     if loaded_people is None:
         loaded_people = st.session_state.get('people', sorted(DEFAULT_PEOPLE))
     elif not loaded_people:
@@ -417,22 +424,51 @@ try:
             save_list("people", DEFAULT_PEOPLE)
             loaded_people = sorted(DEFAULT_PEOPLE)
         else:
-            loaded_people = sorted(DEFAULT_PEOPLE)
+            loaded_people = st.session_state.get('people', sorted(DEFAULT_PEOPLE))
     
-    st.session_state['categories'] = loaded_cats
-    st.session_state['subcategories'] = loaded_subcats
-    st.session_state['people'] = loaded_people
-    
-    if df_rules.empty and is_fresh_db:
-        default_rules_df = pd.DataFrame([
-            {"Keyword": k, **v} for k, v in DEFAULT_RULES.items()
-        ])
-        add_rules(default_rules_df)
+    # Handle rules
+    if df_rules.empty:
+        seed_rules = [{"Keyword": k, "Name": v["name"], "Category": v["category"], "SubCategory": v["subcategory"], "Person": v["person"], "Amount": None} for k, v in DEFAULT_RULES.items()]
+        df_rules = pd.DataFrame(seed_rules)
+        save_rules_full(df_rules)
         df_rules = load_rules()
 
 except Exception as e:
-    st.error(f"⚠️ Failed to load data: {e}")
+    st.error(f"Error connecting to database: {e}")
     st.stop()
+
+# ============================================
+# 5. PRE-PROCESSING
+# ============================================
+if not df_history.empty:
+    df_history['Date'] = pd.to_datetime(df_history['Date'], errors='coerce')
+    df_history['Name'] = df_history['Name'].fillna('') if 'Name' in df_history.columns else ''
+    df_history['SubCategory'] = df_history['SubCategory'].fillna('')
+    df_history['Person'] = df_history['Person'].fillna('Family').replace('', 'Family')
+    df_history['Category'] = df_history['Category'].fillna('Uncategorized').replace('', 'Uncategorized')
+    df_history['Source'] = df_history['Source'].fillna('').replace('', 'Unknown')
+    if 'Locked' not in df_history.columns:
+        df_history['Locked'] = False
+    else:
+        df_history['Locked'] = df_history['Locked'].fillna(False).astype(bool)
+    if 'Name' not in df_history.columns:
+        df_history['Name'] = ''
+
+if not df_rules.empty:
+    if 'Name' not in df_rules.columns:
+        df_rules['Name'] = ''
+    if 'Amount' not in df_rules.columns:
+        df_rules['Amount'] = None
+
+# ============================================
+# 6. SESSION STATE INIT
+# ============================================
+if 'categories' not in st.session_state:
+    st.session_state['categories'] = loaded_cats
+if 'subcategories' not in st.session_state:
+    st.session_state['subcategories'] = loaded_subcats
+if 'people' not in st.session_state:
+    st.session_state['people'] = loaded_people
 
 # ============================================
 # 5. MAIN APP UI
@@ -898,7 +934,25 @@ st.sidebar.header("📄 License")
 if "user_account" in st.session_state:
     st.sidebar.info(f"**Account:** {st.session_state['user_account']}")
     if "license_expiry" in st.session_state:
-        st.sidebar.info(f"**Expires:** {st.session_state['license_expiry'].strftime('%B %d, %Y')}")
+        expiry = st.session_state['license_expiry']
+        days_left = (expiry - datetime.date.today()).days
+        st.sidebar.info(f"**Expires:** {expiry.strftime('%B %d, %Y')}")
+        st.sidebar.info(f"**Days left:** {days_left}")
+
+st.sidebar.markdown("---")
+st.sidebar.header("📌 Connection")
+st.sidebar.success("✅ Connected to Supabase")
+st.sidebar.caption(f"Project: ...{sb_url[-25:]}")
+
+st.sidebar.markdown("---")
+if st.sidebar.button("🚪 Logout"):
+    try:
+        controller.remove(COOKIE_NAME)
+    except:
+        pass
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
 
 # ============================================
 # 6. MAIN CONTENT - Transaction Editor
