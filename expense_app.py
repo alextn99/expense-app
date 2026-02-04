@@ -168,10 +168,11 @@ if not db_connected:
     st.stop()
 
 @st.cache_resource
-def get_supabase_client(_url, _key, _user):
-    return create_client(_url, _key)
+def get_supabase_client(url, key, user):
+    """Create Supabase client. User param ensures cache is per-user."""
+    return create_client(url, key)
 
-sb = get_supabase_client(sb_url, sb_key, sb_user)
+sb = get_supabase_client(sb_url, sb_key, current_user)
 
 # ============================================
 # 3. DATA ACCESS FUNCTIONS
@@ -966,6 +967,10 @@ if st.sidebar.button("🚪 Logout"):
         controller.remove(COOKIE_NAME)
     except:
         pass
+    
+    # ADD THIS LINE - Clear the cached Supabase client
+    get_supabase_client.clear()
+    
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
