@@ -308,10 +308,10 @@ def load_list(table_name):
         resp = sb.table(table_name).select("name").execute()
         if resp.data:
             return sorted([r['name'] for r in resp.data if r.get('name')])
-        return []  # Empty table is fine
+        return []
     except Exception as e:
         st.error(f"⚠️ Failed to load {table_name}: {e}")
-        return None  # Return None on error, not empty list
+        return None
 
 def save_list(table_name, items):
     try:
@@ -390,23 +390,17 @@ try:
     loaded_subcats = load_list("subcategories")
     loaded_people = load_list("people")
     
-    # Check if this is a fresh database (no expenses)
     is_fresh_db = df_history.empty or len(df_history) == 0
     
-    # Handle categories
     if loaded_cats is None:
-        # Error loading - don't overwrite, use cached or defaults
         loaded_cats = st.session_state.get('categories', sorted(DEFAULT_CATEGORIES))
     elif not loaded_cats:
         if is_fresh_db:
-            # Fresh database - save defaults
             save_list("categories", DEFAULT_CATEGORIES)
             loaded_cats = sorted(DEFAULT_CATEGORIES)
         else:
-            # DB has expenses but categories empty - use cached or defaults
             loaded_cats = st.session_state.get('categories', sorted(DEFAULT_CATEGORIES))
     
-    # Handle subcategories
     if loaded_subcats is None:
         loaded_subcats = st.session_state.get('subcategories', sorted(DEFAULT_SUBCATS))
     elif not loaded_subcats:
@@ -416,7 +410,6 @@ try:
         else:
             loaded_subcats = st.session_state.get('subcategories', sorted(DEFAULT_SUBCATS))
     
-    # Handle people
     if loaded_people is None:
         loaded_people = st.session_state.get('people', sorted(DEFAULT_PEOPLE))
     elif not loaded_people:
@@ -500,69 +493,95 @@ if not df_history.empty:
     
     all_sources_list = sorted(df_history['Source'].dropna().unique().tolist())
 
+    # Initialize filter selections in session state
     if 'ppl_selection' not in st.session_state:
-        st.session_state['ppl_selection'] = available_people
+        st.session_state['ppl_selection'] = available_people.copy()
     if 'cat_selection' not in st.session_state:
         st.session_state['cat_selection'] = [c for c in available_cats if c != 'Transfer/Payment']
     if 'sub_selection' not in st.session_state:
-        st.session_state['sub_selection'] = available_subcats
+        st.session_state['sub_selection'] = available_subcats.copy()
     if 'src_selection' not in st.session_state:
-        st.session_state['src_selection'] = all_sources_list
+        st.session_state['src_selection'] = all_sources_list.copy()
 
-    st.sidebar.markdown("**Filter People**")
-    col_ppl1, col_ppl2 = st.sidebar.columns(2)
-    if col_ppl1.button("✅ All", key="btn_all_ppl", use_container_width=True):
-        st.session_state['ppl_selection'] = available_people
-        st.rerun()
-    if col_ppl2.button("🗑️ Clear", key="btn_clr_ppl", use_container_width=True):
-        st.session_state['ppl_selection'] = []
-        st.rerun()
-    valid_ppl = [p for p in st.session_state.get('ppl_selection', []) if p in available_people]
+    # Filter People - Compact Layout with working All button
+    col_ppl_label, col_ppl_btn = st.sidebar.columns([3, 1])
+    col_ppl_label.markdown("**People**")
+    if col_ppl_btn.button("All", key="btn_all_ppl", use_container_width=True):
+        st.session_state['ppl_selection'] = available_people.copy()
+    
+    # Validate current selection against available options
+    current_ppl = st.session_state.get('ppl_selection', [])
+    valid_ppl = [p for p in current_ppl if p in available_people]
     if not valid_ppl:
-        valid_ppl = available_people
-    selected_people = st.sidebar.multiselect("People", available_people, default=valid_ppl, key="ppl_filter", label_visibility="collapsed")
+        valid_ppl = available_people.copy()
+    
+    selected_people = st.sidebar.multiselect(
+        "People", 
+        options=available_people, 
+        default=valid_ppl, 
+        key="ppl_filter", 
+        label_visibility="collapsed"
+    )
     st.session_state['ppl_selection'] = selected_people
 
-    st.sidebar.markdown("**Filter Categories**")
-    col_cat1, col_cat2 = st.sidebar.columns(2)
-    if col_cat1.button("✅ All", key="btn_all_cat", use_container_width=True):
-        st.session_state['cat_selection'] = available_cats
-        st.rerun()
-    if col_cat2.button("🗑️ Clear", key="btn_clr_cat", use_container_width=True):
-        st.session_state['cat_selection'] = []
-        st.rerun()
-    valid_cats = [c for c in st.session_state.get('cat_selection', []) if c in available_cats]
+    # Filter Categories - Compact Layout
+    col_cat_label, col_cat_btn = st.sidebar.columns([3, 1])
+    col_cat_label.markdown("**Categories**")
+    if col_cat_btn.button("All", key="btn_all_cat", use_container_width=True):
+        st.session_state['cat_selection'] = available_cats.copy()
+    
+    current_cats = st.session_state.get('cat_selection', [])
+    valid_cats = [c for c in current_cats if c in available_cats]
     if not valid_cats:
         valid_cats = [c for c in available_cats if c != 'Transfer/Payment']
-    selected_categories = st.sidebar.multiselect("Categories", available_cats, default=valid_cats, key="cat_filter", label_visibility="collapsed")
+    
+    selected_categories = st.sidebar.multiselect(
+        "Categories", 
+        options=available_cats, 
+        default=valid_cats, 
+        key="cat_filter", 
+        label_visibility="collapsed"
+    )
     st.session_state['cat_selection'] = selected_categories
 
-    st.sidebar.markdown("**Filter Sub-Categories**")
-    col_sub1, col_sub2 = st.sidebar.columns(2)
-    if col_sub1.button("✅ All", key="btn_all_sub", use_container_width=True):
-        st.session_state['sub_selection'] = available_subcats
-        st.rerun()
-    if col_sub2.button("🗑️ Clear", key="btn_clr_sub", use_container_width=True):
-        st.session_state['sub_selection'] = []
-        st.rerun()
-    valid_subs = [s for s in st.session_state.get('sub_selection', []) if s in available_subcats]
+    # Filter Sub-Categories - Compact Layout
+    col_sub_label, col_sub_btn = st.sidebar.columns([3, 1])
+    col_sub_label.markdown("**Sub-Categories**")
+    if col_sub_btn.button("All", key="btn_all_sub", use_container_width=True):
+        st.session_state['sub_selection'] = available_subcats.copy()
+    
+    current_subs = st.session_state.get('sub_selection', [])
+    valid_subs = [s for s in current_subs if s in available_subcats]
     if not valid_subs:
-        valid_subs = available_subcats
-    selected_subcats = st.sidebar.multiselect("Sub-Categories", available_subcats, default=valid_subs, key="sub_filter", label_visibility="collapsed")
+        valid_subs = available_subcats.copy()
+    
+    selected_subcats = st.sidebar.multiselect(
+        "Sub-Categories", 
+        options=available_subcats, 
+        default=valid_subs, 
+        key="sub_filter", 
+        label_visibility="collapsed"
+    )
     st.session_state['sub_selection'] = selected_subcats
 
-    st.sidebar.markdown("**Filter Source**")
-    col_src1, col_src2 = st.sidebar.columns(2)
-    if col_src1.button("✅ All", key="btn_all_src", use_container_width=True):
-        st.session_state['src_selection'] = all_sources_list
-        st.rerun()
-    if col_src2.button("🗑️ Clear", key="btn_clr_src", use_container_width=True):
-        st.session_state['src_selection'] = []
-        st.rerun()
-    valid_srcs = [s for s in st.session_state.get('src_selection', []) if s in all_sources_list]
+    # Filter Source - Compact Layout
+    col_src_label, col_src_btn = st.sidebar.columns([3, 1])
+    col_src_label.markdown("**Source**")
+    if col_src_btn.button("All", key="btn_all_src", use_container_width=True):
+        st.session_state['src_selection'] = all_sources_list.copy()
+    
+    current_srcs = st.session_state.get('src_selection', [])
+    valid_srcs = [s for s in current_srcs if s in all_sources_list]
     if not valid_srcs:
-        valid_srcs = all_sources_list
-    selected_sources = st.sidebar.multiselect("Source", all_sources_list, default=valid_srcs, key="src_filter", label_visibility="collapsed")
+        valid_srcs = all_sources_list.copy()
+    
+    selected_sources = st.sidebar.multiselect(
+        "Source", 
+        options=all_sources_list, 
+        default=valid_srcs, 
+        key="src_filter", 
+        label_visibility="collapsed"
+    )
     st.session_state['src_selection'] = selected_sources
 
 else:
@@ -734,90 +753,190 @@ with st.sidebar.expander("🗑️ Recycle Bin", expanded=False):
 
 st.sidebar.markdown("---")
 
+# ============================================
+# IMPORT DATA - FIXED VERSION
+# ============================================
 st.sidebar.header("📤 Import Data")
 manual_source = st.sidebar.text_input("Source Name", placeholder="e.g. HSBC Credit", key="source_input")
 input_method = st.sidebar.radio("Input Method:", ["Upload File", "Paste Text"])
+
+# Initialize upload state
+if 'upload_processed' not in st.session_state:
+    st.session_state['upload_processed'] = False
+if 'last_upload_name' not in st.session_state:
+    st.session_state['last_upload_name'] = None
+
 new_data = pd.DataFrame()
 
 if input_method == "Upload File":
-    uploaded_file = st.sidebar.file_uploader("Upload CSV/Excel", type=["csv", "xlsx"])
-    if uploaded_file:
-        try:
-            new_data = pd.read_csv(uploaded_file) if uploaded_file.name.endswith('.csv') else pd.read_excel(uploaded_file)
-        except:
-            pass
+    uploaded_file = st.sidebar.file_uploader("Upload CSV/Excel", type=["csv", "xlsx"], key="file_uploader")
+    
+    if uploaded_file is not None:
+        # Check if this is a new file or the same one already processed
+        current_file_name = uploaded_file.name
+        
+        if st.session_state.get('last_upload_name') != current_file_name:
+            # New file - reset processing flag
+            st.session_state['upload_processed'] = False
+            st.session_state['last_upload_name'] = current_file_name
+        
+        if not st.session_state['upload_processed']:
+            try:
+                if uploaded_file.name.endswith('.csv'):
+                    new_data = pd.read_csv(uploaded_file)
+                else:
+                    new_data = pd.read_excel(uploaded_file)
+                
+                # Process the data
+                if not new_data.empty:
+                    new_data.columns = [str(c).lower().strip() for c in new_data.columns]
+                    date_col = next((c for c in new_data.columns if 'date' in c), None)
+                    desc_col = next((c for c in new_data.columns if 'desc' in c or 'memo' in c), None)
+                    amt_col = next((c for c in new_data.columns if 'amount' in c or 'debit' in c or 'value' in c or 'hkd' in c), None)
+                    src_col = next((c for c in new_data.columns if 'source' in c), None)
+                    name_col_in = next((c for c in new_data.columns if c == 'name'), None)
+                    cat_col_in = next((c for c in new_data.columns if 'category' in c and 'sub' not in c), None)
+                    sub_col_in = next((c for c in new_data.columns if 'sub' in c), None)
+                    person_col_in = next((c for c in new_data.columns if 'person' in c), None)
+
+                    if date_col and desc_col and amt_col:
+                        new_data[amt_col] = new_data[amt_col].astype(str).str.upper().str.replace('CR','', regex=False).str.replace('DR','', regex=False).str.replace(',','', regex=False).str.replace('$','', regex=False)
+                        new_data[amt_col] = pd.to_numeric(new_data[amt_col], errors='coerce')
+                        file_source = new_data[src_col] if src_col else (manual_source if manual_source else "Uploaded")
+                        
+                        clean_new_data = pd.DataFrame({
+                            'Date': pd.to_datetime(new_data[date_col], errors='coerce'),
+                            'Description': new_data[desc_col],
+                            'Amount': new_data[amt_col],
+                            'Source': file_source,
+                            'Name': new_data[name_col_in] if name_col_in else '',
+                            'Category': new_data[cat_col_in] if cat_col_in else 'Uncategorized',
+                            'SubCategory': new_data[sub_col_in] if sub_col_in else '',
+                            'Person': new_data[person_col_in] if person_col_in else 'Family',
+                            'Locked': False
+                        })
+                        clean_new_data = clean_new_data.dropna(subset=['Date', 'Amount'])
+                        
+                        # Apply rules
+                        def apply_rules_smart(row):
+                            if row['Category'] != 'Uncategorized' and pd.notna(row['Category']) and row.get('Name', '') != '':
+                                return row
+                            name, cat, sub, person = get_match(row['Description'], row['Amount'], df_rules)
+                            if name and (row.get('Name', '') == '' or pd.isna(row.get('Name', ''))):
+                                row['Name'] = name
+                            if cat and (row['Category'] == 'Uncategorized' or pd.isna(row['Category'])):
+                                row['Category'] = cat
+                            if sub and (row.get('SubCategory', '') == '' or pd.isna(row.get('SubCategory', ''))):
+                                row['SubCategory'] = sub
+                            if person and (row.get('Person', '') == '' or pd.isna(row.get('Person', ''))):
+                                row['Person'] = person
+                            return row
+                        
+                        clean_new_data = clean_new_data.apply(apply_rules_smart, axis=1)
+                        
+                        # Check for duplicates
+                        existing = load_expenses()
+                        if not existing.empty:
+                            existing['_key'] = existing['Date'].astype(str) + '|' + existing['Description'].astype(str) + '|' + existing['Amount'].astype(str)
+                            clean_new_data['_key'] = clean_new_data['Date'].astype(str) + '|' + clean_new_data['Description'].astype(str) + '|' + clean_new_data['Amount'].astype(str)
+                            truly_new = clean_new_data[~clean_new_data['_key'].isin(existing['_key'])].drop(columns=['_key'])
+                        else:
+                            truly_new = clean_new_data
+                        
+                        # Mark as processed BEFORE inserting
+                        st.session_state['upload_processed'] = True
+                        
+                        if not truly_new.empty:
+                            insert_expenses(truly_new)
+                            st.sidebar.success(f"✅ Added {len(truly_new)} new transactions!")
+                            st.rerun()
+                        else:
+                            st.sidebar.warning("⚠️ All transactions already exist.")
+                    else:
+                        st.sidebar.error("Headers missing (need Date, Description, Amount).")
+            except Exception as e:
+                st.sidebar.error(f"Error: {e}")
+                st.session_state['upload_processed'] = True  # Prevent infinite loop on error
+
 elif input_method == "Paste Text":
-    pasted_text = st.sidebar.text_area("Paste CSV Data", height=150)
-    if st.sidebar.button("Process"):
-        if pasted_text:
+    # Reset upload state when switching to paste
+    st.session_state['upload_processed'] = False
+    st.session_state['last_upload_name'] = None
+    
+    pasted_text = st.sidebar.text_area("Paste CSV Data", height=150, key="paste_area")
+    
+    if st.sidebar.button("Process Pasted Data", key="process_paste_btn"):
+        if pasted_text and pasted_text.strip():
             try:
                 new_data = pd.read_csv(io.StringIO(pasted_text), sep=',')
-            except:
-                pass
+                
+                if not new_data.empty:
+                    new_data.columns = [str(c).lower().strip() for c in new_data.columns]
+                    date_col = next((c for c in new_data.columns if 'date' in c), None)
+                    desc_col = next((c for c in new_data.columns if 'desc' in c or 'memo' in c), None)
+                    amt_col = next((c for c in new_data.columns if 'amount' in c or 'debit' in c or 'value' in c or 'hkd' in c), None)
+                    src_col = next((c for c in new_data.columns if 'source' in c), None)
+                    name_col_in = next((c for c in new_data.columns if c == 'name'), None)
+                    cat_col_in = next((c for c in new_data.columns if 'category' in c and 'sub' not in c), None)
+                    sub_col_in = next((c for c in new_data.columns if 'sub' in c), None)
+                    person_col_in = next((c for c in new_data.columns if 'person' in c), None)
 
-if not new_data.empty:
-    try:
-        new_data.columns = [str(c).lower().strip() for c in new_data.columns]
-        date_col = next((c for c in new_data.columns if 'date' in c), None)
-        desc_col = next((c for c in new_data.columns if 'desc' in c or 'memo' in c), None)
-        amt_col = next((c for c in new_data.columns if 'amount' in c or 'debit' in c or 'value' in c or 'hkd' in c), None)
-        src_col = next((c for c in new_data.columns if 'source' in c), None)
-        name_col_in = next((c for c in new_data.columns if c == 'name'), None)
-        cat_col_in = next((c for c in new_data.columns if 'category' in c and 'sub' not in c), None)
-        sub_col_in = next((c for c in new_data.columns if 'sub' in c), None)
-        person_col_in = next((c for c in new_data.columns if 'person' in c), None)
-
-        if date_col and desc_col and amt_col:
-            new_data[amt_col] = new_data[amt_col].astype(str).str.upper().str.replace('CR','').str.replace('DR','').str.replace(',','').str.replace('$','')
-            new_data[amt_col] = pd.to_numeric(new_data[amt_col], errors='coerce')
-            file_source = new_data[src_col] if src_col else (manual_source if manual_source else "Pasted/Uploaded")
-            
-            clean_new_data = pd.DataFrame({
-                'Date': pd.to_datetime(new_data[date_col], errors='coerce'),
-                'Description': new_data[desc_col],
-                'Amount': new_data[amt_col],
-                'Source': file_source,
-                'Name': new_data[name_col_in] if name_col_in else '',
-                'Category': new_data[cat_col_in] if cat_col_in else 'Uncategorized',
-                'SubCategory': new_data[sub_col_in] if sub_col_in else '',
-                'Person': new_data[person_col_in] if person_col_in else 'Family',
-                'Locked': False
-            })
-            clean_new_data = clean_new_data.dropna(subset=['Date', 'Amount'])
-            
-            def apply_rules_smart(row):
-                if row['Category'] != 'Uncategorized' and pd.notna(row['Category']) and row.get('Name', '') != '':
-                    return row
-                name, cat, sub, person = get_match(row['Description'], row['Amount'], df_rules)
-                if name and (row.get('Name', '') == '' or pd.isna(row.get('Name', ''))):
-                    row['Name'] = name
-                if cat and (row['Category'] == 'Uncategorized' or pd.isna(row['Category'])):
-                    row['Category'] = cat
-                if sub and (row.get('SubCategory', '') == '' or pd.isna(row.get('SubCategory', ''))):
-                    row['SubCategory'] = sub
-                if person and (row.get('Person', '') == '' or pd.isna(row.get('Person', ''))):
-                    row['Person'] = person
-                return row
-            
-            clean_new_data = clean_new_data.apply(apply_rules_smart, axis=1)
-            existing = load_expenses()
-            if not existing.empty:
-                existing['_key'] = existing['Date'].astype(str) + '|' + existing['Description'].astype(str) + '|' + existing['Amount'].astype(str)
-                clean_new_data['_key'] = clean_new_data['Date'].astype(str) + '|' + clean_new_data['Description'].astype(str) + '|' + clean_new_data['Amount'].astype(str)
-                truly_new = clean_new_data[~clean_new_data['_key'].isin(existing['_key'])].drop(columns=['_key'])
-            else:
-                truly_new = clean_new_data
-            
-            if not truly_new.empty:
-                insert_expenses(truly_new)
-                st.sidebar.success(f"✅ Added {len(truly_new)} new transactions!")
-            else:
-                st.sidebar.warning("⚠️ All transactions already exist.")
-            st.rerun()
+                    if date_col and desc_col and amt_col:
+                        new_data[amt_col] = new_data[amt_col].astype(str).str.upper().str.replace('CR','', regex=False).str.replace('DR','', regex=False).str.replace(',','', regex=False).str.replace('$','', regex=False)
+                        new_data[amt_col] = pd.to_numeric(new_data[amt_col], errors='coerce')
+                        file_source = new_data[src_col] if src_col else (manual_source if manual_source else "Pasted")
+                        
+                        clean_new_data = pd.DataFrame({
+                            'Date': pd.to_datetime(new_data[date_col], errors='coerce'),
+                            'Description': new_data[desc_col],
+                            'Amount': new_data[amt_col],
+                            'Source': file_source,
+                            'Name': new_data[name_col_in] if name_col_in else '',
+                            'Category': new_data[cat_col_in] if cat_col_in else 'Uncategorized',
+                            'SubCategory': new_data[sub_col_in] if sub_col_in else '',
+                            'Person': new_data[person_col_in] if person_col_in else 'Family',
+                            'Locked': False
+                        })
+                        clean_new_data = clean_new_data.dropna(subset=['Date', 'Amount'])
+                        
+                        # Apply rules
+                        def apply_rules_smart(row):
+                            if row['Category'] != 'Uncategorized' and pd.notna(row['Category']) and row.get('Name', '') != '':
+                                return row
+                            name, cat, sub, person = get_match(row['Description'], row['Amount'], df_rules)
+                            if name and (row.get('Name', '') == '' or pd.isna(row.get('Name', ''))):
+                                row['Name'] = name
+                            if cat and (row['Category'] == 'Uncategorized' or pd.isna(row['Category'])):
+                                row['Category'] = cat
+                            if sub and (row.get('SubCategory', '') == '' or pd.isna(row.get('SubCategory', ''))):
+                                row['SubCategory'] = sub
+                            if person and (row.get('Person', '') == '' or pd.isna(row.get('Person', ''))):
+                                row['Person'] = person
+                            return row
+                        
+                        clean_new_data = clean_new_data.apply(apply_rules_smart, axis=1)
+                        
+                        # Check for duplicates
+                        existing = load_expenses()
+                        if not existing.empty:
+                            existing['_key'] = existing['Date'].astype(str) + '|' + existing['Description'].astype(str) + '|' + existing['Amount'].astype(str)
+                            clean_new_data['_key'] = clean_new_data['Date'].astype(str) + '|' + clean_new_data['Description'].astype(str) + '|' + clean_new_data['Amount'].astype(str)
+                            truly_new = clean_new_data[~clean_new_data['_key'].isin(existing['_key'])].drop(columns=['_key'])
+                        else:
+                            truly_new = clean_new_data
+                        
+                        if not truly_new.empty:
+                            insert_expenses(truly_new)
+                            st.sidebar.success(f"✅ Added {len(truly_new)} new transactions!")
+                            st.rerun()
+                        else:
+                            st.sidebar.warning("⚠️ All transactions already exist.")
+                    else:
+                        st.sidebar.error("Headers missing (need Date, Description, Amount).")
+            except Exception as e:
+                st.sidebar.error(f"Error: {e}")
         else:
-            st.sidebar.error("Headers missing (need Date, Description, Amount).")
-    except Exception as e:
-        st.sidebar.error(f"Error: {e}")
+            st.sidebar.warning("Please paste some data first.")
 
 st.sidebar.markdown("---")
 
@@ -937,41 +1056,57 @@ if not df_history.empty and start_date and end_date:
     
     sort_option = st.selectbox("Sort By:", ["Date (Newest)", "Date (Oldest)", "Amount (Lowest first - Big Spends)", "Amount (Highest first - Income)", "Name (A-Z)", "Name (Z-A)", "Description (A-Z)", "Description (Z-A)", "Native (Click Headers to Sort)"])
 
-    # Bulk Actions - Clean Dropdown Style
-    st.markdown("**Bulk Actions:**")
-    col_bulk1, col_bulk2 = st.columns([3, 1])
-    
-    bulk_options = [
-        "Select an action...",
-        "🔒 Lock All",
-        "🔓 Unlock All", 
-        "➕ Select All for Rule Creation",
-        "➕ Clear Rule Selection",
-        "🗑️ Select All for Delete",
-        "🗑️ Clear Delete Selection",
-        "💲 Include Amount in All Rules",
-        "💲 Clear Amount Selection"
-    ]
-    
-    selected_bulk = col_bulk1.selectbox("Bulk Action", bulk_options, label_visibility="collapsed")
-    
-    if col_bulk2.button("▶️ Apply", use_container_width=True):
-        if selected_bulk != "Select an action...":
+    # Bulk Actions - Multi-Select Style
+    with st.expander("⚡ Bulk Actions", expanded=False):
+        st.markdown("**Select actions and click Apply:**")
+        
+        col_b1, col_b2, col_b3, col_b4 = st.columns(4)
+        
+        with col_b1:
+            st.markdown("**🔒 Lock**")
+            lock_all = st.checkbox("Lock All", key="bulk_lock_all")
+            unlock_all = st.checkbox("Unlock All", key="bulk_unlock_all")
+        
+        with col_b2:
+            st.markdown("**💲 Amount**")
+            amt_all = st.checkbox("Include All", key="bulk_amt_all")
+            amt_clear = st.checkbox("Clear All", key="bulk_amt_clear")
+        
+        with col_b3:
+            st.markdown("**➕ Rules**")
+            rule_all = st.checkbox("Select All", key="bulk_rule_all")
+            rule_clear = st.checkbox("Clear All", key="bulk_rule_clear")
+        
+        with col_b4:
+            st.markdown("**🗑️ Delete**")
+            del_all = st.checkbox("Select All", key="bulk_del_all")
+            del_clear = st.checkbox("Clear All", key="bulk_del_clear")
+        
+        if st.button("▶️ Apply Selected Actions", use_container_width=True, type="primary"):
             if 'transaction_editor' in st.session_state:
                 del st.session_state['transaction_editor']
             
-            action_map = {
-                "🔒 Lock All": "select_lock",
-                "🔓 Unlock All": "clear_lock",
-                "🗑️ Select All for Delete": "select_delete",
-                "🗑️ Clear Delete Selection": "clear_delete",
-                "➕ Select All for Rule Creation": "select_rule",
-                "➕ Clear Rule Selection": "clear_rule",
-                "💲 Include Amount in All Rules": "select_amt",
-                "💲 Clear Amount Selection": "clear_amt"
-            }
-            st.session_state['bulk_action'] = action_map[selected_bulk]
-            st.rerun()
+            actions = []
+            if lock_all:
+                actions.append('select_lock')
+            if unlock_all:
+                actions.append('clear_lock')
+            if amt_all:
+                actions.append('select_amt')
+            if amt_clear:
+                actions.append('clear_amt')
+            if rule_all:
+                actions.append('select_rule')
+            if rule_clear:
+                actions.append('clear_rule')
+            if del_all:
+                actions.append('select_delete')
+            if del_clear:
+                actions.append('clear_delete')
+            
+            if actions:
+                st.session_state['bulk_actions'] = actions
+                st.rerun()
 
     if not filtered_df.empty:
         filtered_df_display = filtered_df.copy()
@@ -1001,45 +1136,55 @@ if not df_history.empty and start_date and end_date:
         if 'Name' not in filtered_df_display.columns:
             filtered_df_display['Name'] = ''
 
-        # Apply bulk action from session state
-        bulk_action = st.session_state.get('bulk_action', None)
-        if bulk_action == 'select_delete':
-            filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Delete'] = True
-        elif bulk_action == 'clear_delete':
-            filtered_df_display['Delete'] = False
-        elif bulk_action == 'select_lock':
-            filtered_df_display['Locked'] = True
-        elif bulk_action == 'clear_lock':
-            filtered_df_display['Locked'] = False
-        elif bulk_action == 'select_rule':
-            filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Create Rule'] = True
-        elif bulk_action == 'clear_rule':
-            filtered_df_display['Create Rule'] = False
-        elif bulk_action == 'select_amt':
-            filtered_df_display['Include Amt'] = True
-        elif bulk_action == 'clear_amt':
-            filtered_df_display['Include Amt'] = False
+        # Apply bulk actions from session state (supports multiple)
+        bulk_actions = st.session_state.get('bulk_actions', [])
+        
+        for bulk_action in bulk_actions:
+            if bulk_action == 'select_delete':
+                filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Delete'] = True
+            elif bulk_action == 'clear_delete':
+                filtered_df_display['Delete'] = False
+            elif bulk_action == 'select_lock':
+                filtered_df_display['Locked'] = True
+            elif bulk_action == 'clear_lock':
+                filtered_df_display['Locked'] = False
+            elif bulk_action == 'select_rule':
+                filtered_df_display.loc[filtered_df_display['Locked'] == False, 'Create Rule'] = True
+            elif bulk_action == 'clear_rule':
+                filtered_df_display['Create Rule'] = False
+            elif bulk_action == 'select_amt':
+                filtered_df_display['Include Amt'] = True
+            elif bulk_action == 'clear_amt':
+                filtered_df_display['Include Amt'] = False
 
-        # DON'T clear bulk_action here - we'll clear it after save
-
-        display_cols = ['id', 'Locked', 'Date', 'Name', 'Amount', 'Category', 'SubCategory', 'Person', 'Description', 'Source', 'Include Amt', 'Create Rule', 'Delete']
+        # Column order: Lock, Date, Name, Description (moved next to Name), Amount, Category, SubCategory, Person, Source, Include Amt, Create Rule, Delete
+        display_cols = ['id', 'Locked', 'Date', 'Name', 'Description', 'Amount', 'Category', 'SubCategory', 'Person', 'Source', 'Include Amt', 'Create Rule', 'Delete']
         filtered_df_display = filtered_df_display[[c for c in display_cols if c in filtered_df_display.columns]]
 
-        edited_df = st.data_editor(filtered_df_display, column_config={
-            "id": None,
-            "Locked": st.column_config.CheckboxColumn("🔒", width="small"),
-            "Date": st.column_config.DateColumn("Date"),
-            "Name": st.column_config.TextColumn("Name"),
-            "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
-            "Category": st.column_config.SelectboxColumn("Category", options=available_cats, required=True),
-            "SubCategory": st.column_config.SelectboxColumn("Sub-Category", options=available_subcats),
-            "Person": st.column_config.SelectboxColumn("Person", options=available_people, required=True),
-            "Description": st.column_config.TextColumn("Description"),
-            "Source": st.column_config.TextColumn("Source", disabled=True),
-            "Include Amt": st.column_config.CheckboxColumn("💲", width="small"),
-            "Create Rule": st.column_config.CheckboxColumn("➕", width="small"),
-            "Delete": st.column_config.CheckboxColumn("🗑️", width="small")
-        }, hide_index=True, use_container_width=True, num_rows="fixed", height=500, key="transaction_editor")
+        edited_df = st.data_editor(
+            filtered_df_display,
+            column_order=['Locked', 'Date', 'Name', 'Description', 'Amount', 'Category', 'SubCategory', 'Person', 'Source', 'Include Amt', 'Create Rule', 'Delete'],
+            column_config={
+                "id": None,
+                "Locked": st.column_config.CheckboxColumn("🔒", width="small"),
+                "Date": st.column_config.DateColumn("Date"),
+                "Name": st.column_config.TextColumn("Name"),
+                "Description": st.column_config.TextColumn("Description"),
+                "Amount": st.column_config.NumberColumn("Amount", format="$%.2f"),
+                "Category": st.column_config.SelectboxColumn("Category", options=available_cats, required=True),
+                "SubCategory": st.column_config.SelectboxColumn("Sub-Category", options=available_subcats),
+                "Person": st.column_config.SelectboxColumn("Person", options=available_people, required=True),
+                "Source": st.column_config.TextColumn("Source", disabled=True),
+                "Include Amt": st.column_config.CheckboxColumn("💲", width="small"),
+                "Create Rule": st.column_config.CheckboxColumn("➕", width="small"),
+                "Delete": st.column_config.CheckboxColumn("🗑️", width="small")
+            },
+            hide_index=True,
+            use_container_width=True,
+            num_rows="fixed",
+            height=500,
+            key="transaction_editor"
+        )
 
         rows_to_delete = edited_df[edited_df['Delete'] == True] if 'Delete' in edited_df.columns else pd.DataFrame()
         delete_count = len(rows_to_delete)
@@ -1073,12 +1218,10 @@ if not df_history.empty and start_date and end_date:
                         delete_expenses(ids_to_delete)
                         st.session_state['confirm_delete_selected'] = False
                         st.session_state['rows_to_delete'] = None
-                        # CLEAR THE CACHED EDITOR STATE
                         if 'transaction_editor' in st.session_state:
                             del st.session_state['transaction_editor']
-                        # CLEAR BULK ACTION
-                        if 'bulk_action' in st.session_state:
-                            del st.session_state['bulk_action']
+                        if 'bulk_actions' in st.session_state:
+                            del st.session_state['bulk_actions']
                         st.success(f"🗑️ Moved {len(ids_to_delete)} items to Recycle Bin!")
                         st.rerun()
                 if col_confirm2.button("❌ Cancel", key="confirm_del_no", use_container_width=True):
@@ -1134,13 +1277,11 @@ if not df_history.empty and start_date and end_date:
             if not new_rows.empty:
                 insert_expenses(new_rows)
             
-            # CLEAR THE CACHED EDITOR STATE
             if 'transaction_editor' in st.session_state:
                 del st.session_state['transaction_editor']
             
-            # CLEAR BULK ACTION AFTER SAVE
-            if 'bulk_action' in st.session_state:
-                del st.session_state['bulk_action']
+            if 'bulk_actions' in st.session_state:
+                del st.session_state['bulk_actions']
             
             st.success("✅ Changes Saved!")
             st.rerun()
