@@ -168,8 +168,8 @@ if not db_connected:
     st.stop()
 
 @st.cache_resource
-def get_supabase_client(url, key, user):
-    return create_client(url, key)
+def get_supabase_client(_url, _key, _user):
+    return create_client(_url, _key)
 
 sb = get_supabase_client(sb_url, sb_key, sb_user)
 
