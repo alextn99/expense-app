@@ -1057,6 +1057,7 @@ if not df_history.empty and start_date and end_date:
             selected_cat = cat_master.iloc[selected_idx]['Category']
             subset_df = filtered_df[filtered_df['Category'] == selected_cat].copy()
             sub_breakdown = subset_df.groupby('SubCategory')['Amount'].sum().reset_index()
+            sub_breakdown['Amount'] = pd.to_numeric(sub_breakdown['Amount'], errors='coerce')  # Ensure numeric
             sub_breakdown = sub_breakdown.sort_values(by='SubCategory', ascending=True)  # A-Z
             sub_breakdown['Total'] = sub_breakdown['Amount'].apply(lambda x: f"${x:,.2f}")
             st.info(f"Drilling down into: **{selected_cat}**")
