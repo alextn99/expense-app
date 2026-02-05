@@ -1013,7 +1013,7 @@ if not df_history.empty and start_date and end_date:
     col_m1, col_m2, col_m3 = st.columns(3)
     col_m1.metric("💰 Net Total", f"${net_total:,.2f}")
     col_m2.metric("📉 Total Spending", f"${total_spending:,.2f}")
-    col_m3.metric(("📈 Total Income", f"${total_income:,.2f}")
+    col_m3.metric("📈 Total Income", f"${total_income:,.2f}")
 
     col_main_1, col_main_2 = st.columns(2)
     with col_main_1:
