@@ -504,18 +504,17 @@ if not df_history.empty:
     if 'src_selection' not in st.session_state:
         st.session_state['src_selection'] = all_sources_list.copy()
 
-        # Filter People - Compact Layout with working All button
+    # Filter People
     col_ppl_label, col_ppl_btn = st.sidebar.columns([3, 1])
     col_ppl_label.markdown("**People**")
     if col_ppl_btn.button("All", key="btn_all_ppl", use_container_width=True):
         st.session_state['ppl_filter'] = available_people.copy()
         st.rerun()
 
+    # Only remove invalid options (don't repopulate if user cleared)
     if 'ppl_filter' in st.session_state:
         valid_ppl = [p for p in st.session_state['ppl_filter'] if p in available_people]
-        if not valid_ppl:
-            st.session_state['ppl_filter'] = available_people.copy()
-        elif set(valid_ppl) != set(st.session_state['ppl_filter']):
+        if set(valid_ppl) != set(st.session_state['ppl_filter']):
             st.session_state['ppl_filter'] = valid_ppl
 
     selected_people = st.sidebar.multiselect(
@@ -526,7 +525,7 @@ if not df_history.empty:
         label_visibility="collapsed"
     )
 
-    # Filter Categories - Compact Layout
+    # Filter Categories
     col_cat_label, col_cat_btn = st.sidebar.columns([3, 1])
     col_cat_label.markdown("**Categories**")
     if col_cat_btn.button("All", key="btn_all_cat", use_container_width=True):
@@ -535,9 +534,7 @@ if not df_history.empty:
 
     if 'cat_filter' in st.session_state:
         valid_cats = [c for c in st.session_state['cat_filter'] if c in available_cats]
-        if not valid_cats:
-            st.session_state['cat_filter'] = [c for c in available_cats if c != 'Transfer/Payment']
-        elif set(valid_cats) != set(st.session_state['cat_filter']):
+        if set(valid_cats) != set(st.session_state['cat_filter']):
             st.session_state['cat_filter'] = valid_cats
 
     selected_categories = st.sidebar.multiselect(
@@ -548,7 +545,7 @@ if not df_history.empty:
         label_visibility="collapsed"
     )
 
-    # Filter Sub-Categories - Compact Layout
+    # Filter Sub-Categories
     col_sub_label, col_sub_btn = st.sidebar.columns([3, 1])
     col_sub_label.markdown("**Sub-Categories**")
     if col_sub_btn.button("All", key="btn_all_sub", use_container_width=True):
@@ -557,9 +554,7 @@ if not df_history.empty:
 
     if 'sub_filter' in st.session_state:
         valid_subs = [s for s in st.session_state['sub_filter'] if s in available_subcats]
-        if not valid_subs:
-            st.session_state['sub_filter'] = available_subcats.copy()
-        elif set(valid_subs) != set(st.session_state['sub_filter']):
+        if set(valid_subs) != set(st.session_state['sub_filter']):
             st.session_state['sub_filter'] = valid_subs
 
     selected_subcats = st.sidebar.multiselect(
@@ -570,7 +565,7 @@ if not df_history.empty:
         label_visibility="collapsed"
     )
 
-    # Filter Source - Compact Layout
+    # Filter Source
     col_src_label, col_src_btn = st.sidebar.columns([3, 1])
     col_src_label.markdown("**Source**")
     if col_src_btn.button("All", key="btn_all_src", use_container_width=True):
@@ -579,9 +574,7 @@ if not df_history.empty:
 
     if 'src_filter' in st.session_state:
         valid_srcs = [s for s in st.session_state['src_filter'] if s in all_sources_list]
-        if not valid_srcs:
-            st.session_state['src_filter'] = all_sources_list.copy()
-        elif set(valid_srcs) != set(st.session_state['src_filter']):
+        if set(valid_srcs) != set(st.session_state['src_filter']):
             st.session_state['src_filter'] = valid_srcs
 
     selected_sources = st.sidebar.multiselect(
