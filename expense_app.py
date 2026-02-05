@@ -391,40 +391,19 @@ try:
     loaded_subcats = load_list("subcategories")
     loaded_people = load_list("people")
     
-    is_fresh_db = df_history.empty or len(df_history) == 0
-    
+    # If load failed (returned None), use session state or empty list - NEVER auto-populate defaults
     if loaded_cats is None:
-        loaded_cats = st.session_state.get('categories', sorted(DEFAULT_CATEGORIES))
-    elif not loaded_cats:
-        if is_fresh_db:
-            save_list("categories", DEFAULT_CATEGORIES)
-            loaded_cats = sorted(DEFAULT_CATEGORIES)
-        else:
-            loaded_cats = st.session_state.get('categories', sorted(DEFAULT_CATEGORIES))
+        loaded_cats = st.session_state.get('categories', [])
     
     if loaded_subcats is None:
-        loaded_subcats = st.session_state.get('subcategories', sorted(DEFAULT_SUBCATS))
-    elif not loaded_subcats:
-        if is_fresh_db:
-            save_list("subcategories", DEFAULT_SUBCATS)
-            loaded_subcats = sorted(DEFAULT_SUBCATS)
-        else:
-            loaded_subcats = st.session_state.get('subcategories', sorted(DEFAULT_SUBCATS))
+        loaded_subcats = st.session_state.get('subcategories', [])
     
     if loaded_people is None:
-        loaded_people = st.session_state.get('people', sorted(DEFAULT_PEOPLE))
-    elif not loaded_people:
-        if is_fresh_db:
-            save_list("people", DEFAULT_PEOPLE)
-            loaded_people = sorted(DEFAULT_PEOPLE)
-        else:
-            loaded_people = st.session_state.get('people', sorted(DEFAULT_PEOPLE))
+        loaded_people = st.session_state.get('people', [])
     
+    # Don't auto-seed rules - leave empty if empty
     if df_rules.empty:
-        seed_rules = [{"Keyword": k, "Name": v["name"], "Category": v["category"], "SubCategory": v["subcategory"], "Person": v["person"], "Amount": None} for k, v in DEFAULT_RULES.items()]
-        df_rules = pd.DataFrame(seed_rules)
-        save_rules_full(df_rules)
-        df_rules = load_rules()
+        df_rules = pd.DataFrame(columns=['Keyword', 'Name', 'Category', 'SubCategory', 'Person', 'Amount'])
 except Exception as e:
     st.error(f"Error connecting to database: {e}")
     st.stop()
@@ -456,11 +435,11 @@ if not df_rules.empty:
 # 6. SESSION STATE INIT
 # ============================================
 if 'categories' not in st.session_state:
-    st.session_state['categories'] = loaded_cats
+    st.session_state['categories'] = loaded_cats if loaded_cats else []
 if 'subcategories' not in st.session_state:
-    st.session_state['subcategories'] = loaded_subcats
+    st.session_state['subcategories'] = loaded_subcats if loaded_subcats else []
 if 'people' not in st.session_state:
-    st.session_state['people'] = loaded_people
+    st.session_state['people'] = loaded_people if loaded_people else []
 
 # ============================================
 # MAIN TITLE
