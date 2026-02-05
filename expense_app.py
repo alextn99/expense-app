@@ -1000,47 +1000,55 @@ if not df_history.empty and start_date and end_date:
 
     filtered_df = df_history.loc[mask].copy()
 
-    total_expense_gross = filtered_df[filtered_df['Amount'] < 0]['Amount'].sum() * -1
-    total_refunds = filtered_df[filtered_df['Amount'] > 0]['Amount'].sum()
-    net_spend = total_expense_gross - total_refunds
+    total_spending = filtered_df[filtered_df['Amount'] < 0]['Amount'].sum()  # Negative number
+    total_income = filtered_df[filtered_df['Amount'] > 0]['Amount'].sum()    # Positive number
+    net_total = total_spending + total_income  # Negative if spent more than earned
+    
     cat_group = filtered_df.groupby('Category')['Amount'].sum().reset_index()
-    cat_group['AbsAmount'] = cat_group['Amount'] * -1
+    cat_group['AbsAmount'] = cat_group['Amount'].abs()  # For pie chart (needs positive)
+    
     p_group = filtered_df.groupby('Person')['Amount'].sum().reset_index()
-    p_group['AbsAmount'] = p_group['Amount'] * -1
+    p_group['AbsAmount'] = p_group['Amount'].abs()  # For pie chart (needs positive)
 
     col_m1, col_m2, col_m3 = st.columns(3)
-    col_m1.metric("💸 Net Spend", f"${net_spend:,.2f}")
-    col_m2.metric("📉 Total Spend (Gross)", f"${total_expense_gross:,.2f}")
-    col_m3.metric("↩️ Refunds/Income", f"${total_refunds:,.2f}")
+    col_m1.metric("💰 Net Total", f"${net_total:,.2f}")
+    col_m2.metric("📉 Total Spending", f"${total_spending:,.2f}")
+    col_m3.metric(("📈 Total Income", f"${total_income:,.2f}")
 
     col_main_1, col_main_2 = st.columns(2)
     with col_main_1:
         st.subheader("Spending by Category")
-        cat_pie = cat_group[cat_group['AbsAmount'] > 0]
-        if not cat_pie.empty:
-            fig = px.pie(cat_pie, values='AbsAmount', names='Category', hole=0.4)
+        # Filter to only spending (negative amounts) for pie chart
+        cat_spending = cat_group[cat_group['Amount'] < 0].copy()
+        cat_spending['AbsAmount'] = cat_spending['Amount'].abs()
+        
+        if not cat_spending.empty:
+            fig = px.pie(cat_spending, values='AbsAmount', names='Category', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
-            cat_display = cat_group.sort_values(by='AbsAmount', ascending=False)
-            cat_display['Total'] = cat_display['AbsAmount'].apply(lambda x: f"${x:,.2f}")
+            cat_display = cat_group.sort_values(by='Amount', ascending=True)  # Most negative first
+            cat_display['Total'] = cat_display['Amount'].apply(lambda x: f"${x:,.2f}")
             st.dataframe(cat_display[['Category', 'Total']], hide_index=True, use_container_width=True)
 
     with col_main_2:
         st.subheader("Spending by Person")
-        p_pie = p_group[p_group['AbsAmount'] > 0]
-        if not p_pie.empty:
-            fig2 = px.pie(p_pie, values='AbsAmount', names='Person', hole=0.4, color_discrete_sequence=px.colors.qualitative.Set3)
+        # Filter to only spending (negative amounts) for pie chart
+        p_spending = p_group[p_group['Amount'] < 0].copy()
+        p_spending['AbsAmount'] = p_spending['Amount'].abs()
+        
+        if not p_spending.empty:
+            fig2 = px.pie(p_spending, values='AbsAmount', names='Person', hole=0.4, color_discrete_sequence=px.colors.qualitative.Set3)
             st.plotly_chart(fig2, use_container_width=True)
-            p_display = p_group.sort_values(by='AbsAmount', ascending=False)
-            p_display['Total'] = p_display['AbsAmount'].apply(lambda x: f"${x:,.2f}")
+            p_display = p_group.sort_values(by='Amount', ascending=True)  # Most negative first
+            p_display['Total'] = p_display['Amount'].apply(lambda x: f"${x:,.2f}")
             st.dataframe(p_display[['Person', 'Total']], hide_index=True, use_container_width=True)
-
+            
     st.markdown("---")
     st.subheader("📊 Category Deep Dive")
     col_dd1, col_dd2 = st.columns([1, 1])
     with col_dd1:
         st.markdown("**1. Select a Category:**")
-        cat_master = cat_group[cat_group['AbsAmount'] > 0].sort_values(by='AbsAmount', ascending=False)
-        cat_master['Total'] = cat_master['AbsAmount'].apply(lambda x: f"${x:,.2f}")
+        cat_master = cat_group.sort_values(by='Amount', ascending=True)  # Most negative (biggest spend) first
+        cat_master['Total'] = cat_master['Amount'].apply(lambda x: f"${x:,.2f}")
         selection = st.dataframe(cat_master[['Category', 'Total']], use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row")
     with col_dd2:
         st.markdown("**2. Sub-Category Breakdown:**")
@@ -1049,9 +1057,8 @@ if not df_history.empty and start_date and end_date:
             selected_cat = cat_master.iloc[selected_idx]['Category']
             subset_df = filtered_df[filtered_df['Category'] == selected_cat].copy()
             sub_breakdown = subset_df.groupby('SubCategory')['Amount'].sum().reset_index()
-            sub_breakdown['AbsAmount'] = sub_breakdown['Amount'] * -1
-            sub_breakdown = sub_breakdown.sort_values(by='AbsAmount', ascending=False)
-            sub_breakdown['Total'] = sub_breakdown['AbsAmount'].apply(lambda x: f"${x:,.2f}")
+            sub_breakdown = sub_breakdown.sort_values(by='Amount', ascending=True)  # Most negative first
+            sub_breakdown['Total'] = sub_breakdown['Amount'].apply(lambda x: f"${x:,.2f}")
             st.info(f"Drilling down into: **{selected_cat}**")
             st.dataframe(sub_breakdown[['SubCategory', 'Total']], use_container_width=True, hide_index=True)
         else:
