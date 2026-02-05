@@ -503,15 +503,14 @@ if not df_history.empty:
         st.session_state['sub_selection'] = available_subcats.copy()
     if 'src_selection' not in st.session_state:
         st.session_state['src_selection'] = all_sources_list.copy()
-        
-    # Filter People - Compact Layout with working All button
+
+        # Filter People - Compact Layout with working All button
     col_ppl_label, col_ppl_btn = st.sidebar.columns([3, 1])
     col_ppl_label.markdown("**People**")
     if col_ppl_btn.button("All", key="btn_all_ppl", use_container_width=True):
         st.session_state['ppl_filter'] = available_people.copy()
         st.rerun()
 
-    # Validate existing selection against current options
     if 'ppl_filter' in st.session_state:
         valid_ppl = [p for p in st.session_state['ppl_filter'] if p in available_people]
         if not valid_ppl:
@@ -534,7 +533,6 @@ if not df_history.empty:
         st.session_state['cat_filter'] = available_cats.copy()
         st.rerun()
 
-    # Validate existing selection
     if 'cat_filter' in st.session_state:
         valid_cats = [c for c in st.session_state['cat_filter'] if c in available_cats]
         if not valid_cats:
@@ -557,7 +555,6 @@ if not df_history.empty:
         st.session_state['sub_filter'] = available_subcats.copy()
         st.rerun()
 
-    # Validate existing selection
     if 'sub_filter' in st.session_state:
         valid_subs = [s for s in st.session_state['sub_filter'] if s in available_subcats]
         if not valid_subs:
@@ -580,7 +577,6 @@ if not df_history.empty:
         st.session_state['src_filter'] = all_sources_list.copy()
         st.rerun()
 
-    # Validate existing selection
     if 'src_filter' in st.session_state:
         valid_srcs = [s for s in st.session_state['src_filter'] if s in all_sources_list]
         if not valid_srcs:
@@ -595,7 +591,7 @@ if not df_history.empty:
         key="src_filter", 
         label_visibility="collapsed"
     )
-     st.session_state['src_selection'] = selected_sources
+    st.session_state['src_selection'] = selected_sources
 
 else:
     start_date, end_date = None, None
