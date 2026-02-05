@@ -1025,7 +1025,7 @@ if not df_history.empty and start_date and end_date:
         if not cat_spending.empty:
             fig = px.pie(cat_spending, values='AbsAmount', names='Category', hole=0.4)
             st.plotly_chart(fig, use_container_width=True)
-            cat_display = cat_group.sort_values(by='Amount', ascending=True)  # Most negative first
+            cat_display = cat_group.sort_values(by='Category', ascending=True)  # A-Z
             cat_display['Total'] = cat_display['Amount'].apply(lambda x: f"${x:,.2f}")
             st.dataframe(cat_display[['Category', 'Total']], hide_index=True, use_container_width=True)
 
@@ -1038,7 +1038,7 @@ if not df_history.empty and start_date and end_date:
         if not p_spending.empty:
             fig2 = px.pie(p_spending, values='AbsAmount', names='Person', hole=0.4, color_discrete_sequence=px.colors.qualitative.Set3)
             st.plotly_chart(fig2, use_container_width=True)
-            p_display = p_group.sort_values(by='Amount', ascending=True)  # Most negative first
+            p_display = p_group.sort_values(by='Person', ascending=True)  # A-Z  # Alphabetical
             p_display['Total'] = p_display['Amount'].apply(lambda x: f"${x:,.2f}")
             st.dataframe(p_display[['Person', 'Total']], hide_index=True, use_container_width=True)
             
@@ -1047,7 +1047,7 @@ if not df_history.empty and start_date and end_date:
     col_dd1, col_dd2 = st.columns([1, 1])
     with col_dd1:
         st.markdown("**1. Select a Category:**")
-        cat_master = cat_group.sort_values(by='Amount', ascending=True)  # Most negative (biggest spend) first
+        cat_master = cat_group.sort_values(by='Category', ascending=True)  # A-Z 
         cat_master['Total'] = cat_master['Amount'].apply(lambda x: f"${x:,.2f}")
         selection = st.dataframe(cat_master[['Category', 'Total']], use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row")
     with col_dd2:
@@ -1057,7 +1057,7 @@ if not df_history.empty and start_date and end_date:
             selected_cat = cat_master.iloc[selected_idx]['Category']
             subset_df = filtered_df[filtered_df['Category'] == selected_cat].copy()
             sub_breakdown = subset_df.groupby('SubCategory')['Amount'].sum().reset_index()
-            sub_breakdown = sub_breakdown.sort_values(by='Amount', ascending=True)  # Most negative first
+            sub_breakdown = sub_breakdown.sort_values(by='SubCategory', ascending=True)  # A-Z
             sub_breakdown['Total'] = sub_breakdown['Amount'].apply(lambda x: f"${x:,.2f}")
             st.info(f"Drilling down into: **{selected_cat}**")
             st.dataframe(sub_breakdown[['SubCategory', 'Total']], use_container_width=True, hide_index=True)
