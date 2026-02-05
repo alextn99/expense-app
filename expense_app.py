@@ -503,87 +503,99 @@ if not df_history.empty:
         st.session_state['sub_selection'] = available_subcats.copy()
     if 'src_selection' not in st.session_state:
         st.session_state['src_selection'] = all_sources_list.copy()
-
+        
     # Filter People - Compact Layout with working All button
     col_ppl_label, col_ppl_btn = st.sidebar.columns([3, 1])
     col_ppl_label.markdown("**People**")
     if col_ppl_btn.button("All", key="btn_all_ppl", use_container_width=True):
-        st.session_state['ppl_selection'] = available_people.copy()
-    
-    # Validate current selection against available options
-    current_ppl = st.session_state.get('ppl_selection', [])
-    valid_ppl = [p for p in current_ppl if p in available_people]
-    if not valid_ppl:
-        valid_ppl = available_people.copy()
-    
+        st.session_state['ppl_filter'] = available_people.copy()
+        st.rerun()
+
+    # Validate existing selection against current options
+    if 'ppl_filter' in st.session_state:
+        valid_ppl = [p for p in st.session_state['ppl_filter'] if p in available_people]
+        if not valid_ppl:
+            st.session_state['ppl_filter'] = available_people.copy()
+        elif set(valid_ppl) != set(st.session_state['ppl_filter']):
+            st.session_state['ppl_filter'] = valid_ppl
+
     selected_people = st.sidebar.multiselect(
         "People", 
         options=available_people, 
-        default=valid_ppl, 
+        default=available_people,
         key="ppl_filter", 
         label_visibility="collapsed"
     )
-    st.session_state['ppl_selection'] = selected_people
 
     # Filter Categories - Compact Layout
     col_cat_label, col_cat_btn = st.sidebar.columns([3, 1])
     col_cat_label.markdown("**Categories**")
     if col_cat_btn.button("All", key="btn_all_cat", use_container_width=True):
-        st.session_state['cat_selection'] = available_cats.copy()
-    
-    current_cats = st.session_state.get('cat_selection', [])
-    valid_cats = [c for c in current_cats if c in available_cats]
-    if not valid_cats:
-        valid_cats = [c for c in available_cats if c != 'Transfer/Payment']
-    
+        st.session_state['cat_filter'] = available_cats.copy()
+        st.rerun()
+
+    # Validate existing selection
+    if 'cat_filter' in st.session_state:
+        valid_cats = [c for c in st.session_state['cat_filter'] if c in available_cats]
+        if not valid_cats:
+            st.session_state['cat_filter'] = [c for c in available_cats if c != 'Transfer/Payment']
+        elif set(valid_cats) != set(st.session_state['cat_filter']):
+            st.session_state['cat_filter'] = valid_cats
+
     selected_categories = st.sidebar.multiselect(
         "Categories", 
         options=available_cats, 
-        default=valid_cats, 
+        default=[c for c in available_cats if c != 'Transfer/Payment'],
         key="cat_filter", 
         label_visibility="collapsed"
     )
-    st.session_state['cat_selection'] = selected_categories
 
     # Filter Sub-Categories - Compact Layout
     col_sub_label, col_sub_btn = st.sidebar.columns([3, 1])
     col_sub_label.markdown("**Sub-Categories**")
     if col_sub_btn.button("All", key="btn_all_sub", use_container_width=True):
-        st.session_state['sub_selection'] = available_subcats.copy()
-    
-    current_subs = st.session_state.get('sub_selection', [])
-    valid_subs = [s for s in current_subs if s in available_subcats]
-    if not valid_subs:
-        valid_subs = available_subcats.copy()
-    
+        st.session_state['sub_filter'] = available_subcats.copy()
+        st.rerun()
+
+    # Validate existing selection
+    if 'sub_filter' in st.session_state:
+        valid_subs = [s for s in st.session_state['sub_filter'] if s in available_subcats]
+        if not valid_subs:
+            st.session_state['sub_filter'] = available_subcats.copy()
+        elif set(valid_subs) != set(st.session_state['sub_filter']):
+            st.session_state['sub_filter'] = valid_subs
+
     selected_subcats = st.sidebar.multiselect(
         "Sub-Categories", 
         options=available_subcats, 
-        default=valid_subs, 
+        default=available_subcats,
         key="sub_filter", 
         label_visibility="collapsed"
     )
-    st.session_state['sub_selection'] = selected_subcats
 
     # Filter Source - Compact Layout
     col_src_label, col_src_btn = st.sidebar.columns([3, 1])
     col_src_label.markdown("**Source**")
     if col_src_btn.button("All", key="btn_all_src", use_container_width=True):
-        st.session_state['src_selection'] = all_sources_list.copy()
-    
-    current_srcs = st.session_state.get('src_selection', [])
-    valid_srcs = [s for s in current_srcs if s in all_sources_list]
-    if not valid_srcs:
-        valid_srcs = all_sources_list.copy()
-    
+        st.session_state['src_filter'] = all_sources_list.copy()
+        st.rerun()
+
+    # Validate existing selection
+    if 'src_filter' in st.session_state:
+        valid_srcs = [s for s in st.session_state['src_filter'] if s in all_sources_list]
+        if not valid_srcs:
+            st.session_state['src_filter'] = all_sources_list.copy()
+        elif set(valid_srcs) != set(st.session_state['src_filter']):
+            st.session_state['src_filter'] = valid_srcs
+
     selected_sources = st.sidebar.multiselect(
         "Source", 
         options=all_sources_list, 
-        default=valid_srcs, 
+        default=all_sources_list,
         key="src_filter", 
         label_visibility="collapsed"
     )
-    st.session_state['src_selection'] = selected_sources
+     st.session_state['src_selection'] = selected_sources
 
 else:
     start_date, end_date = None, None
