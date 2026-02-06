@@ -936,14 +936,14 @@ if "license_expiry" in st.session_state:
     days_left = (expiry - datetime.date.today()).days
     st.sidebar.text(f"Expires: {expiry.strftime('%b %d, %Y')}")
     st.sidebar.text(f"Days left: {days_left}")
-
+    
 st.sidebar.markdown("---")
 st.sidebar.header("📌 Connection")
 st.sidebar.success("✅ Connected to Supabase")
 st.sidebar.caption(f"Project: ...{sb_url[-25:]}")
 
 # ============================================
-# BACKUP & RESTORE - ADD THIS SECTION
+# BACKUP & RESTORE SECTION
 # ============================================
 st.sidebar.markdown("---")
 st.sidebar.header("💾 Backup & Restore")
@@ -951,39 +951,33 @@ st.sidebar.header("💾 Backup & Restore")
 # --- BACKUP BUTTON ---
 if st.sidebar.button("📥 Create Backup", use_container_width=True):
     try:
+        import json
         backup_date = datetime.datetime.now().strftime("%Y%m%d")
         backup_name = f"supabase_backup_{backup_date}"
         
         backup_data = {}
         
-        # Backup expenses
         expenses_resp = sb.table("expenses").select("*").execute()
         backup_data['expenses'] = expenses_resp.data if expenses_resp.data else []
         
-        # Backup rules
         rules_resp = sb.table("rules").select("*").execute()
         backup_data['rules'] = rules_resp.data if rules_resp.data else []
         
-        # Backup categories
         cats_resp = sb.table("categories").select("*").execute()
         backup_data['categories'] = cats_resp.data if cats_resp.data else []
         
-        # Backup subcategories
         subcats_resp = sb.table("subcategories").select("*").execute()
         backup_data['subcategories'] = subcats_resp.data if subcats_resp.data else []
         
-        # Backup people
         people_resp = sb.table("people").select("*").execute()
         backup_data['people'] = people_resp.data if people_resp.data else []
         
-        # Backup deleted_expenses (trash)
         try:
             trash_resp = sb.table("deleted_expenses").select("*").execute()
             backup_data['deleted_expenses'] = trash_resp.data if trash_resp.data else []
         except:
             backup_data['deleted_expenses'] = []
         
-        # Add metadata
         backup_data['_metadata'] = {
             'backup_date': datetime.datetime.now().isoformat(),
             'user': current_user,
@@ -994,34 +988,30 @@ if st.sidebar.button("📥 Create Backup", use_container_width=True):
             'total_people': len(backup_data['people'])
         }
         
-        # Convert to JSON
-        import json
         backup_json = json.dumps(backup_data, indent=2, default=str)
         
         st.session_state['backup_ready'] = True
         st.session_state['backup_json'] = backup_json
         st.session_state['backup_name'] = backup_name
         
-        st.sidebar.success(f"✅ Backup ready!")
+        st.sidebar.success("✅ Backup ready!")
         st.rerun()
         
     except Exception as e:
         st.sidebar.error(f"❌ Backup failed: {e}")
 
-# --- DOWNLOAD BUTTON (appears after backup is created) ---
+# --- DOWNLOAD BUTTON ---
 if st.session_state.get('backup_ready', False):
+    import json
     backup_json = st.session_state.get('backup_json', '')
     backup_name = st.session_state.get('backup_name', 'backup')
     
-    # Parse to show summary
     try:
-        import json
         backup_info = json.loads(backup_json)
         meta = backup_info.get('_metadata', {})
         st.sidebar.caption(
             f"📊 {meta.get('total_expenses', 0)} expenses, "
-            f"{meta.get('total_rules', 0)} rules, "
-            f"{meta.get('total_categories', 0)} categories"
+            f"{meta.get('total_rules', 0)} rules"
         )
     except:
         pass
@@ -1043,12 +1033,11 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
     restore_file = st.file_uploader("Upload backup JSON", type=['json'], key="restore_upload")
     
     if restore_file is not None:
-        # Show file info
+        import json
         try:
-            import json
             file_content = restore_file.read()
             backup_data = json.loads(file_content.decode('utf-8'))
-            restore_file.seek(0)  # Reset file pointer
+            restore_file.seek(0)
             
             meta = backup_data.get('_metadata', {})
             st.info(
@@ -1059,6 +1048,7 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
             )
         except:
             st.warning("Could not read backup info")
+            backup_data = None
         
         restore_mode = st.radio(
             "Restore Mode:",
@@ -1087,22 +1077,18 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                 added_counts = {}
                 updated_counts = {}
                 
-                # === FULL OVERWRITE MODE ===
                 if restore_mode == "🗑️ Full Overwrite (replace everything)":
                     
-                    # Expenses
                     if 'expenses' in backup_data and backup_data['expenses']:
                         sb.table("expenses").delete().gte("id", 0).execute()
                         expenses_clean = [{k: v for k, v in exp.items() if k != 'id'} for exp in backup_data['expenses']]
                         if expenses_clean:
-                            # Insert in batches to avoid timeouts
                             batch_size = 100
                             for i in range(0, len(expenses_clean), batch_size):
                                 batch = expenses_clean[i:i+batch_size]
                                 sb.table("expenses").insert(batch).execute()
                         added_counts['expenses'] = len(backup_data['expenses'])
                     
-                    # Rules
                     if 'rules' in backup_data and backup_data['rules']:
                         sb.table("rules").delete().gte("id", 0).execute()
                         rules_clean = [{k: v for k, v in rule.items() if k != 'id'} for rule in backup_data['rules']]
@@ -1110,7 +1096,6 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                             sb.table("rules").insert(rules_clean).execute()
                         added_counts['rules'] = len(backup_data['rules'])
                     
-                    # Categories
                     if 'categories' in backup_data and backup_data['categories']:
                         sb.table("categories").delete().gte("id", 0).execute()
                         cats_clean = [{k: v for k, v in cat.items() if k != 'id'} for cat in backup_data['categories']]
@@ -1118,7 +1103,6 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                             sb.table("categories").insert(cats_clean).execute()
                         added_counts['categories'] = len(backup_data['categories'])
                     
-                    # Subcategories
                     if 'subcategories' in backup_data and backup_data['subcategories']:
                         sb.table("subcategories").delete().gte("id", 0).execute()
                         subs_clean = [{k: v for k, v in sub.items() if k != 'id'} for sub in backup_data['subcategories']]
@@ -1126,7 +1110,6 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                             sb.table("subcategories").insert(subs_clean).execute()
                         added_counts['subcategories'] = len(backup_data['subcategories'])
                     
-                    # People
                     if 'people' in backup_data and backup_data['people']:
                         sb.table("people").delete().gte("id", 0).execute()
                         people_clean = [{k: v for k, v in p.items() if k != 'id'} for p in backup_data['people']]
@@ -1134,22 +1117,19 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                             sb.table("people").insert(people_clean).execute()
                         added_counts['people'] = len(backup_data['people'])
                     
-                    # Deleted expenses (trash)
-                    if 'deleted_expenses' in backup_data and backup_data['deleted_expenses']:
-                        try:
+                    try:
+                        if 'deleted_expenses' in backup_data and backup_data['deleted_expenses']:
                             sb.table("deleted_expenses").delete().gte("id", 0).execute()
                             trash_clean = [{k: v for k, v in item.items() if k != 'id'} for item in backup_data['deleted_expenses']]
                             if trash_clean:
                                 sb.table("deleted_expenses").insert(trash_clean).execute()
                             added_counts['trash'] = len(backup_data['deleted_expenses'])
-                        except:
-                            pass
+                    except:
+                        pass
                 
-                # === KEEP EXISTING or PREFER BACKUP ===
                 else:
                     prefer_backup = (restore_mode == "📥 Prefer Backup (update conflicts)")
                     
-                    # --- EXPENSES ---
                     if 'expenses' in backup_data and backup_data['expenses']:
                         existing_resp = sb.table("expenses").select("*").execute()
                         existing_map = {}
@@ -1187,7 +1167,6 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                         added_counts['expenses'] = len(new_expenses)
                         updated_counts['expenses'] = len(update_expenses)
                     
-                    # --- RULES ---
                     if 'rules' in backup_data and backup_data['rules']:
                         existing_resp = sb.table("rules").select("*").execute()
                         existing_map = {}
@@ -1222,7 +1201,6 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                         added_counts['rules'] = len(new_rules)
                         updated_counts['rules'] = len(update_rules)
                     
-                    # --- CATEGORIES ---
                     if 'categories' in backup_data and backup_data['categories']:
                         existing_resp = sb.table("categories").select("*").execute()
                         existing_names = set()
@@ -1239,7 +1217,6 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                             sb.table("categories").insert(new_cats).execute()
                         added_counts['categories'] = len(new_cats)
                     
-                    # --- SUBCATEGORIES ---
                     if 'subcategories' in backup_data and backup_data['subcategories']:
                         existing_resp = sb.table("subcategories").select("*").execute()
                         existing_names = set()
@@ -1256,7 +1233,6 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                             sb.table("subcategories").insert(new_subs).execute()
                         added_counts['subcategories'] = len(new_subs)
                     
-                    # --- PEOPLE ---
                     if 'people' in backup_data and backup_data['people']:
                         existing_resp = sb.table("people").select("*").execute()
                         existing_names = set()
@@ -1273,7 +1249,6 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                             sb.table("people").insert(new_people).execute()
                         added_counts['people'] = len(new_people)
                 
-                # === SHOW RESULTS ===
                 added_msg = ", ".join([f"{count} {table}" for table, count in added_counts.items() if count > 0])
                 updated_msg = ", ".join([f"{count} {table}" for table, count in updated_counts.items() if count > 0])
                 
@@ -1285,9 +1260,8 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                         result_parts.append(f"🔄 Updated: {updated_msg}")
                     st.success("\n".join(result_parts))
                 else:
-                    st.info("ℹ️ No changes needed - all data already exists")
+                    st.info("ℹ️ No changes - all data already exists")
                 
-                # Clear caches and reload
                 if 'transaction_editor' in st.session_state:
                     del st.session_state['transaction_editor']
                 
@@ -1295,15 +1269,10 @@ with st.sidebar.expander("🔄 Restore from Backup", expanded=False):
                 
             except Exception as e:
                 st.error(f"❌ Restore failed: {e}")
-                import traceback
-                st.code(traceback.format_exc())
 
 # ============================================
-# END OF BACKUP & RESTORE SECTION
+# END BACKUP & RESTORE
 # ============================================
-
-st.sidebar.markdown("---")
-if st.sidebar.button("🚪 Logout"):
 
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Logout"):
@@ -1312,12 +1281,12 @@ if st.sidebar.button("🚪 Logout"):
     except:
         pass
     
-    # ADD THIS LINE - Clear the cached Supabase client
     get_supabase_client.clear()
     
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
+    
 
 # ============================================
 # MAIN DASHBOARD
