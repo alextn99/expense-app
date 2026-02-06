@@ -5,6 +5,7 @@ from supabase import create_client
 from streamlit_cookies_controller import CookieController
 import io
 import datetime
+import json
 
 # --- CONFIGURATION ---
 DEFAULT_CATEGORIES = [
@@ -936,11 +937,7 @@ if "license_expiry" in st.session_state:
     st.sidebar.text(f"Expires: {expiry.strftime('%b %d, %Y')}")
     st.sidebar.text(f"Days left: {days_left}")
 
-st.sidebar.markdown("---")
 st.sidebar.header("📌 Connection")
-st.sidebar.success("✅ Connected to Supabase")
-st.sidebar.caption(f"Project: ...{sb_url[-25:]}")
-
 st.sidebar.markdown("---")
 if st.sidebar.button("🚪 Logout"):
     try:
