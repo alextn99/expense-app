@@ -5,6 +5,7 @@ from supabase import create_client
 from streamlit_cookies_controller import CookieController
 import io
 import datetime
+import json
 
 # --- CONFIGURATION ---
 DEFAULT_CATEGORIES = [
